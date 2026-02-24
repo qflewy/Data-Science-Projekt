@@ -1,4 +1,4 @@
-marvin = 1
+marvin = 187
 bjarne = 2
-sebastian = 1
+sebastian = 100
 tom = 1
