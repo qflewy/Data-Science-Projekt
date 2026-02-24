@@ -1,0 +1,8 @@
+1. Flugdaten & Wirtschaftsdaten verknüpfen
+->Fragen:
+
+2. Schiffahrtsdaten / Logistik
+->Fragen:
+
+3. Games & Streaming
+->Twitcht API, Steam API, Riot API, ...
