@@ -1,2 +1,2 @@
 # Data-Science-Projekt
-Universtiy Project of 4 Students
+University Project of 4 Students
