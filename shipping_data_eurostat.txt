@@ -1,0 +1,15 @@
+Shipping Data Eurostat:
+
+Detailed tables per each reporting Country:
+- Organized by Country "in the Loop"
+- Unit: 1000t
+
+Example GER: https://ec.europa.eu/eurostat/databrowser/view/mar_go_am_de__custom_20258542/default/table
+
+Search Categories:
+- Direction of Flow: In- and Outgoing 
+- Trade Partners (by Country)
+- relevant ports
+- Nationality of regristration of vessel
+- Type of Cargo (NOT NORMALIZED! Categories vary by Country)
+- By Quartal Examples:-- Germany(1997-2024) -- Estonia(2002-2024)
