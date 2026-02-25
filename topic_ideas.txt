@@ -87,11 +87,49 @@ Data Accessibility Notes
 3. Games & Streaming
 ->Twitcht API, Steam API, Riot API, ...
 
-Do Twitch streams by top streamers (e.g., with an average of over 20k viewers or 30k subscribers) lead to a significant long-term increase in player numbers in games such as Rocket League, etc.?
 Data Scources:
 *Twitch API, viwer count, Stream timestamps, 
-*Steam API, concurrent player counts, historical charts (SteamCharts no official API)
+*Steam API, concurrent player counts, historical charts via SteamCharts no official API
 
-To what extent can viral games be identified based on sudden spikes in Twitch viewers?
 
-To what extent are sales figures for new games (CoD, EA FC, etc.) influenced by major Twitch streamers?
+1. Do Twitch streams by top streamers (e.g., with an average of over 20k viewers or 30k subscribers) lead to a significant long-term increase in player numbers in games such as Rocket League, etc.?
+    - Twitch API, 
+    - Steam API
+2. To what extent can viral games be identified based on sudden spikes in Twitch viewers?
+    - Twitch API, 
+    - Steam API
+3. To what extent are sales figures for new games (CoD, EA FC, etc.) influenced by major Twitch streamers?
+    - Twitch API
+    - Steam API
+4. Do esports tournaments streamed (e.g. LoL Worlds, Esports World Cup) on Twitch create sustained increases in player numbers?
+    - Steam API, 
+    - Twitch API, 
+    - Riot Games API
+5. Are indie games more dependent on Twitch exposure than AAA games?
+    - Twitch API
+    - Steam API
+6. Do Twitch viewer spikes predict increases in Google search/Social Media interest?
+
+7. Does Twitch exposure increase Reddit activity for a game?
+    - Reddit API, 
+    - Twitch API
+
+8. Do new Patch/Update announcements (YT or Twitch Stream) increase short term player activity before the patch?
+    - Twitch API
+    - YT API
+
+9. Do major game patches (e.g. new LoL Season, new RL Season) lead to significant increases in Twitch viewership or YouTube cliks?
+    - Riot Games API
+    - YouTube API
+    - Twitch API
+    - Steam API
+10. Do major game patches (e.g. new LoL Season --> 8.1/DLCs (Destiny, Elden Ring) lead to significant increase in Playercount?
+    - Riot Games API
+    - Steam API
+11. Do Twitch Viewercounts have a bigger influence on Playercounts than YouTube clicks?
+    - YouTube API
+    - Twitch API
+    - Steam API
+12. Do esports-heavy genres exhibit stronger bidirectional effects between Twitch and YouTube? (--> Twitch Peak, YT Highlights, Twitch Peak 2)
+    - YouTube API
+    - Twitch API
