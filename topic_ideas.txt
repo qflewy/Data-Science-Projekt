@@ -86,3 +86,9 @@ Data Accessibility Notes
 
 3. Games & Streaming
 ->Twitcht API, Steam API, Riot API, ...
+
+Do Twitch streams by top streamers (e.g., with an average of over 20k viewers or 30k subscribers) lead to a significant long-term increase in player numbers in games such as Clash Royale, Rocket League, etc.?
+
+To what extent can viral games be identified based on sudden spikes in Twitch viewers?
+
+To what extent are sales figures for new games (CoD, EA FC, etc.) influenced by major Twitch streamers?
