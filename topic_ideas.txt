@@ -1,5 +1,67 @@
 1. Flugdaten & Wirtschaftsdaten verknüpfen
 ->Fragen:
+1. Air Traffic and Economic Growth
+Research Questions:
+
+How does the volume of passenger air traffic correlate with GDP growth in EU countries over the past decade?
+Is there a causal relationship between cargo air traffic volume and industrial production indices in major EU economies?
+Data Sources:
+
+Eurostat (GDP, industrial production)
+ICAO (air traffic data)
+World Bank (economic indicators)
+
+2. Impact of Global Events
+Research Questions:
+
+How did the COVID-19 pandemic affect passenger air traffic and tourism revenue in EU countries, and how quickly did these sectors recover?
+What was the impact of the 2022 energy crisis on cargo air traffic and export volumes in Europe?
+Data Sources:
+
+Eurostat (tourism, trade)
+IATA (air traffic reports)
+National statistical offices
+
+3. Regional Disparities
+Research Questions:
+
+Are there significant differences in air traffic growth (passenger and cargo) between Western and Eastern EU countries, and how do these relate to regional economic development?
+How does the presence of major airports (hubs) influence local economic indicators such as employment and GDP per capita?
+Data Sources:
+
+Eurostat (regional statistics)
+Airport authorities (traffic data)
+
+4. Environmental and Economic Trade-offs
+Research Questions:
+
+What is the relationship between carbon emissions from air traffic and economic output in the aviation sector across EU countries?
+How do fuel prices and environmental regulations impact the profitability of cargo airlines?
+Data Sources:
+
+Eurostat (emissions, energy prices)
+ICAO (aviation environmental reports)
+
+5. Seasonality and Economic Activity
+Research Questions:
+
+How does seasonal variation in passenger air traffic (e.g., summer vs. winter) correlate with retail sales and hospitality sector performance in tourist-heavy EU regions?
+Are there seasonal patterns in cargo air traffic that align with manufacturing or agricultural export cycles?
+Data Sources:
+
+Eurostat (seasonal trade, tourism)
+National meteorological and tourism boards
+
+6. Infrastructure and Economic Efficiency
+Research Questions:
+
+Does investment in airport infrastructure (e.g., new terminals, runways) lead to measurable increases in regional economic activity?
+How do delays and cancellations in air traffic impact local economies, particularly in regions dependent on tourism or time-sensitive cargo?
+Data Sources:
+
+Eurostat (infrastructure investment)
+Flightradar24 (delay/cancellation data)
+
 
 2. Schiffahrtsdaten / Logistik
 ->Fragen:
