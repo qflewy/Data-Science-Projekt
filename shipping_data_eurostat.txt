@@ -13,3 +13,8 @@ Search Categories:
 - Nationality of regristration of vessel
 - Type of Cargo (NOT NORMALIZED! Categories vary by Country)
 - By Quartal Examples:-- Germany(1997-2024) -- Estonia(2002-2024)
+
+
+Modal split of air, sea and inland freight transport:
+for every eu country the split between different freight transport Categories.
+link: https://ec.europa.eu/eurostat/databrowser/view/tran_hv_ms_frmod__custom_20262762/default/table

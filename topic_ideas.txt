@@ -1,5 +1,55 @@
 1. Flugdaten & Wirtschaftsdaten verknüpfen
 ->Fragen:
+-Air Traffic and Economic Growth
+Research Questions:
+How does the volume of passenger air traffic correlate with GDP growth in EU countries over the past decade?
+Is there a causal relationship between cargo air traffic volume and industrial production indices in major EU economies?
+Data Sources:
+Eurostat (GDP, industrial production)
+ICAO (air traffic data)
+World Bank (economic indicators)
+
+-Impact of Global Events
+Research Questions:
+How did the COVID-19 pandemic affect passenger air traffic and tourism revenue in EU countries, and how quickly did these sectors recover?
+What was the impact of the 2022 energy crisis on cargo air traffic and export volumes in Europe?
+Data Sources:
+Eurostat (tourism, trade)
+IATA (air traffic reports)
+National statistical offices
+
+-Regional Disparities
+Research Questions:
+Are there significant differences in air traffic growth (passenger and cargo) between Western and Eastern EU countries, and how do these relate to regional economic development?
+How does the presence of major airports (hubs) influence local economic indicators such as employment and GDP per capita?
+Data Sources:
+Eurostat (regional statistics)
+Airport authorities (traffic data)
+
+-Environmental and Economic Trade-offs
+Research Questions:
+What is the relationship between carbon emissions from air traffic and economic output in the aviation sector across EU countries?
+How do fuel prices and environmental regulations impact the profitability of cargo airlines?
+Data Sources:
+Eurostat (emissions, energy prices)
+ICAO (aviation environmental reports)
+
+-Seasonality and Economic Activity
+Research Questions:
+How does seasonal variation in passenger air traffic (e.g., summer vs. winter) correlate with retail sales and hospitality sector performance in tourist-heavy EU regions?
+Are there seasonal patterns in cargo air traffic that align with manufacturing or agricultural export cycles?
+Data Sources:
+Eurostat (seasonal trade, tourism)
+National meteorological and tourism boards
+
+Infrastructure and Economic Efficiency
+Research Questions:
+Does investment in airport infrastructure (e.g., new terminals, runways) lead to measurable increases in regional economic activity?
+How do delays and cancellations in air traffic impact local economies, particularly in regions dependent on tourism or time-sensitive cargo?
+Data Sources:
+Eurostat (infrastructure investment)
+Flightradar24 (delay/cancellation data)
+
 
 2. Schiffahrtsdaten / Logistik
 ->Fragen:
@@ -8,7 +58,7 @@ Marine cargo traffic and logistics in the European market is a rich and impactfu
 especially given the availability of public datasets from sources like Eurostat, EMODnet (European Marine Observation and Data Network), UNCTAD (United Nations Conference on Trade and Development), and Port Authorities. 
 Here are some research questions and angles you could explore, along with the types of data you might use:
 
-1. Efficiency and Congestion in European Ports
+-Efficiency and Congestion in European Ports
 Research Questions:
 * Which European ports experience the highest congestion, and what are the seasonal or annual patterns?
 * How do delays in major ports (e.g., Rotterdam, Hamburg, Antwerp) correlate with global events (e.g., pandemics, geopolitical tensions, or climate-related disruptions)?
@@ -18,7 +68,7 @@ Data Sources:
 * EMODnet: Real-time and historical vessel density maps.
 * Port Authority Reports: Publicly available reports from major ports.
 
-2. Environmental Impact of Marine Cargo Traffic
+-Environmental Impact of Marine Cargo Traffic
 Research Questions:
 * What is the carbon footprint of cargo ships in European waters, and how has it changed over the past decade?
 * How do emission control areas (ECAs) in Europe affect shipping routes and fuel consumption?
@@ -28,7 +78,7 @@ Data Sources:
 * EMODnet: Vessel tracking data (AIS) for route analysis.
 * EU MRV Regulation Data: Monitoring, Reporting, and Verification of CO2 emissions from ships.
 
-3. Trade Flow Analysis and Economic Impact
+-Trade Flow Analysis and Economic Impact
 Research Questions:
 * Which European countries are the largest importers/exporters by sea, and what are the dominant commodities?
 * How have trade flows shifted due to Brexit, the Ukraine war, or the Suez Canal disruptions?
@@ -38,7 +88,7 @@ Data Sources:
 * UNCTAD: Global and regional trade statistics.
 * World Bank: Economic indicators for correlation analysis.
 
-4. Supply Chain Resilience and Risk Assessment
+-Supply Chain Resilience and Risk Assessment
 Research Questions:
 * Which European ports are most vulnerable to supply chain disruptions (e.g., strikes, natural disasters)?
 * How do alternative routes (e.g., Arctic shipping) impact the resilience of European supply chains?
@@ -48,7 +98,7 @@ Data Sources:
 * EMODnet: Historical data on disruptions (e.g., storms, accidents).
 * Lloyd’s List Intelligence: Publicly available risk reports.
 
-5. Digitalization and Automation in Ports
+-Digitalization and Automation in Ports
 Research Questions:
 * How are European ports adopting automation (e.g., automated cranes, AI-driven logistics), and what is the impact on efficiency?
 * What is the correlation between digitalization levels and port performance metrics (e.g., turnaround time, throughput)?
@@ -58,7 +108,7 @@ Data Sources:
 * Port Authority Whitepapers: Public reports on digitalization projects.
 * EU Research Projects: Horizon 2020/Horizon Europe reports on smart ports.
 
-6. Impact of Geopolitical Events on Shipping Routes
+-Impact of Geopolitical Events on Shipping Routes
 Research Questions:
 * How have sanctions, conflicts, or trade wars (e.g., Russia-Ukraine, US-China) altered shipping routes to/from Europe?
 * What are the economic costs of rerouting cargo due to geopolitical risks?
@@ -68,7 +118,7 @@ Data Sources:
 * UNCTAD: Reports on geopolitical impacts on trade.
 * News Archives: For event timelines (e.g., Reuters, BBC).
 
-7. Forecasting Cargo Demand
+-Forecasting Cargo Demand
 Research Questions:
 * Can we forecast cargo demand for specific European ports using time series analysis?
 * How do external factors (e.g., oil prices, global demand) influence cargo volumes?
@@ -87,11 +137,49 @@ Data Accessibility Notes
 3. Games & Streaming
 ->Twitcht API, Steam API, Riot API, ...
 
-Do Twitch streams by top streamers (e.g., with an average of over 20k viewers or 30k subscribers) lead to a significant long-term increase in player numbers in games such as Rocket League, etc.?
 Data Scources:
 *Twitch API, viwer count, Stream timestamps, 
-*Steam API, concurrent player counts, historical charts (SteamCharts no official API)
+*Steam API, concurrent player counts, historical charts via SteamCharts no official API
 
-To what extent can viral games be identified based on sudden spikes in Twitch viewers?
 
-To what extent are sales figures for new games (CoD, EA FC, etc.) influenced by major Twitch streamers?
+1. Do Twitch streams by top streamers (e.g., with an average of over 20k viewers or 30k subscribers) lead to a significant long-term increase in player numbers in games such as Rocket League, etc.?
+    - Twitch API, 
+    - Steam API
+2. To what extent can viral games be identified based on sudden spikes in Twitch viewers?
+    - Twitch API, 
+    - Steam API
+3. To what extent are sales figures for new games (CoD, EA FC, etc.) influenced by major Twitch streamers?
+    - Twitch API
+    - Steam API
+4. Do esports tournaments streamed (e.g. LoL Worlds, Esports World Cup) on Twitch create sustained increases in player numbers?
+    - Steam API, 
+    - Twitch API, 
+    - Riot Games API
+5. Are indie games more dependent on Twitch exposure than AAA games?
+    - Twitch API
+    - Steam API
+6. Do Twitch viewer spikes predict increases in Google search/Social Media interest?
+
+7. Does Twitch exposure increase Reddit activity for a game?
+    - Reddit API, 
+    - Twitch API
+
+8. Do new Patch/Update announcements (YT or Twitch Stream) increase short term player activity before the patch?
+    - Twitch API
+    - YT API
+
+9. Do major game patches (e.g. new LoL Season, new RL Season) lead to significant increases in Twitch viewership or YouTube cliks?
+    - Riot Games API
+    - YouTube API
+    - Twitch API
+    - Steam API
+10. Do major game patches (e.g. new LoL Season --> 8.1/DLCs (Destiny, Elden Ring) lead to significant increase in Playercount?
+    - Riot Games API
+    - Steam API
+11. Do Twitch Viewercounts have a bigger influence on Playercounts than YouTube clicks?
+    - YouTube API
+    - Twitch API
+    - Steam API
+12. Do esports-heavy genres exhibit stronger bidirectional effects between Twitch and YouTube? (--> Twitch Peak, YT Highlights, Twitch Peak 2)
+    - YouTube API
+    - Twitch API
