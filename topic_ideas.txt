@@ -4,5 +4,85 @@
 2. Schiffahrtsdaten / Logistik
 ->Fragen:
 
+Marine cargo traffic and logistics in the European market is a rich and impactful area for a data science project, 
+especially given the availability of public datasets from sources like Eurostat, EMODnet (European Marine Observation and Data Network), UNCTAD (United Nations Conference on Trade and Development), and Port Authorities. 
+Here are some research questions and angles you could explore, along with the types of data you might use:
+
+1. Efficiency and Congestion in European Ports
+Research Questions:
+* Which European ports experience the highest congestion, and what are the seasonal or annual patterns?
+* How do delays in major ports (e.g., Rotterdam, Hamburg, Antwerp) correlate with global events (e.g., pandemics, geopolitical tensions, or climate-related disruptions)?
+* Can machine learning models predict port congestion based on historical traffic, weather, and economic indicators?
+Data Sources:
+* Eurostat: Port traffic statistics, container throughput, and vessel calls.
+* EMODnet: Real-time and historical vessel density maps.
+* Port Authority Reports: Publicly available reports from major ports.
+
+2. Environmental Impact of Marine Cargo Traffic
+Research Questions:
+* What is the carbon footprint of cargo ships in European waters, and how has it changed over the past decade?
+* How do emission control areas (ECAs) in Europe affect shipping routes and fuel consumption?
+* Can we identify "green" shipping corridors or ports with lower emissions?
+Data Sources:
+* Eurostat: Emissions from maritime transport.
+* EMODnet: Vessel tracking data (AIS) for route analysis.
+* EU MRV Regulation Data: Monitoring, Reporting, and Verification of CO2 emissions from ships.
+
+3. Trade Flow Analysis and Economic Impact
+Research Questions:
+* Which European countries are the largest importers/exporters by sea, and what are the dominant commodities?
+* How have trade flows shifted due to Brexit, the Ukraine war, or the Suez Canal disruptions?
+* Can we predict trade volume changes based on macroeconomic indicators (e.g., GDP, inflation)?
+Data Sources:
+* Eurostat: International trade in goods by maritime transport.
+* UNCTAD: Global and regional trade statistics.
+* World Bank: Economic indicators for correlation analysis.
+
+4. Supply Chain Resilience and Risk Assessment
+Research Questions:
+* Which European ports are most vulnerable to supply chain disruptions (e.g., strikes, natural disasters)?
+* How do alternative routes (e.g., Arctic shipping) impact the resilience of European supply chains?
+* Can we model the risk of delays or bottlenecks in the European maritime network?
+Data Sources:
+* Eurostat: Port infrastructure and connectivity data.
+* EMODnet: Historical data on disruptions (e.g., storms, accidents).
+* Lloyd’s List Intelligence: Publicly available risk reports.
+
+5. Digitalization and Automation in Ports
+Research Questions:
+* How are European ports adopting automation (e.g., automated cranes, AI-driven logistics), and what is the impact on efficiency?
+* What is the correlation between digitalization levels and port performance metrics (e.g., turnaround time, throughput)?
+* Can we identify best practices for digital transformation in ports?
+Data Sources:
+* Eurostat: Port infrastructure and technology adoption surveys.
+* Port Authority Whitepapers: Public reports on digitalization projects.
+* EU Research Projects: Horizon 2020/Horizon Europe reports on smart ports.
+
+6. Impact of Geopolitical Events on Shipping Routes
+Research Questions:
+* How have sanctions, conflicts, or trade wars (e.g., Russia-Ukraine, US-China) altered shipping routes to/from Europe?
+* What are the economic costs of rerouting cargo due to geopolitical risks?
+* Can we predict future route changes based on geopolitical trends?
+Data Sources:
+* EMODnet: AIS data for route analysis.
+* UNCTAD: Reports on geopolitical impacts on trade.
+* News Archives: For event timelines (e.g., Reuters, BBC).
+
+7. Forecasting Cargo Demand
+Research Questions:
+* Can we forecast cargo demand for specific European ports using time series analysis?
+* How do external factors (e.g., oil prices, global demand) influence cargo volumes?
+* What is the accuracy of different forecasting models (e.g., ARIMA, LSTM) for port traffic?
+Data Sources:
+* Eurostat: Historical cargo volumes.
+* World Bank: Commodity price indices.
+* IMF: Global economic outlook reports.
+
+Data Accessibility Notes
+* Eurostat is your best friend for structured, reliable, and free data. Use their database and filter by "maritime transport."
+* EMODnet provides AIS data and environmental layers (e.g., wind, waves) that can be combined with traffic data.
+* Port Authorities (e.g., Rotterdam, Hamburg) often publish annual reports with detailed statistics.
+
+
 3. Games & Streaming
 ->Twitcht API, Steam API, Riot API, ...
