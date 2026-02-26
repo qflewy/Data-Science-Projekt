@@ -133,8 +133,9 @@ Data Accessibility Notes
 ->Twitch API, Steam API, Riot API, ...
 
 Data Scources:
-*Twitch API, viewer count, Stream timestamps, 
-*Steam API, concurrent player counts, historical charts via SteamCharts no official API
+*Steam API, concurrent player counts
+*CSVs from StreamCharts for Histrocal Playercounts
+*CSVs from https://sullygnome.com for Histrocal Twitch Viewer Charts
 
 
 1. Do Twitch streams by top streamers (e.g., with an average of over 20k viewers or 30k subscribers) lead to a significant long-term increase in player numbers in games such as Rocket League, etc.?
