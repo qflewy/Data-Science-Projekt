@@ -1,5 +1,7 @@
 Welche Warentypen haben zwischen 2010–2024 den größten strukturellen Wachstumsbeitrag zum maritimen Handel der EU geleistet?
 
+Spielen bestimmte Warentypen eine Rolle beim Wachstum des maritimen Handels oder lässt sich das Wachstum eher auf einen generellen Wachstumstrend aller Warentypen zurückführen? $$
+
 Unterscheiden sich die Warenstrukturen von Importen und Exporten systematisch innerhalb der EU-Länder? $$
 
 Welche Länder sind besonders stark auf wenige maritime Warentypen spezialisiert?
@@ -10,7 +12,7 @@ Hat ein definiertes geopolitisches Ereignis (z. B. 2022 Q1) signifikante Veränd
 
 In welchem Ausmaß erklärt das BIP-Wachstum eines Landes das Wachstum seines maritimen Handelsvolumens? $$
 
-Gibt es systematische saisonale Muster im maritimen Handel bestimmter Warentypen?
+Gibt es systematische saisonale Muster im maritimen Handel bestimmter Warentypen? $
 
 Welche EU-Länder haben eine ähnliche “Art” von Schifffahrtshandel, wenn man schaut, welche Warenarten (die 27 Warentypen) sie über See importieren und exportieren?
 Ziel: Länder in verständliche Gruppen einteilen (z. B. “energie-lastig”, “industrie-lastig”, “gemischt”). ($$)
@@ -19,7 +21,7 @@ Sind Länder, die viele verschiedene Warentypen über See handeln, weniger anfä
 Ziel: Prüfen, ob “breit aufgestellt” gleich “stabiler” ist. -->abhängig von warentypanzahl
 
 Bei welchen Ländern und Warentypen hängt der Seehandel stark von nur wenigen Partnerländern ab?
-Ziel: Risiken sichtbar machen (z. B. “für Warentyp X hängt Land Y zu stark an Partner Z”). $$
+Ziel: Risiken sichtbar machen (z. B. “für Warentyp X hängt Land Y zu stark an Partner Z”). $$ (->bestimmte Länder aussuchen)
 
 Welche europäischen Häfen sind für das Gesamtsystem besonders wichtig, weil viel Handel über sie läuft oder sie als “Knotenpunkt” dienen?
 Ziel: Ein Ranking, welche Häfen systemrelevant sind.
@@ -35,6 +37,6 @@ Ziel: Ausreißer, überraschende Entwicklungen oder mögliche Datenprobleme sich
 
 What is the carbon footprint of cargo ships in European waters, and how has it changed over the past decade? $$
 
-Can we predict trade volume changes based on macroeconomic indicators (e.g., GDP, inflation)?
+Can we predict trade volume changes based on macroeconomic indicators (e.g., GDP, inflation)? ($?)
 
 *Frage zur Auswirkung von Ölpreisen auf Schiffsverkehr*
