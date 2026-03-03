@@ -25,3 +25,5 @@ Sind Tankstellen in dichter Nachbarschaft (Umkreis von 1km sind mehr als) und so
 Beeinflussen extreme Wetterbedingungen (Perioden mit unter 0 Grad) die Tankpreise in Kiel (und Deutschland)?
 
 Haben CO2 Steuer Erhöhungen zu Beginn der letzten Jahre zu einem Tankpreisanstieg proportional zu der Steuererhöhung geführt oder gibt es Diskrepanzen?
+
+->Fourier Terme für Zeitreihenanalyse anschauen
