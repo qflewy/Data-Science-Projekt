@@ -26,4 +26,6 @@ Beeinflussen extreme Wetterbedingungen (Perioden mit unter 0 Grad) die Tankpreis
 
 Haben CO2 Steuer Erhöhungen zu Beginn der letzten Jahre zu einem Tankpreisanstieg proportional zu der Steuererhöhung geführt oder gibt es Diskrepanzen?
 
+Haben die Fahrzeugdichte oder die Dichte an höherklassigen Fahrzeugen Einfluss auf die Preisentwicklung?
+
 ->Fourier Terme für Zeitreihenanalyse anschauen
