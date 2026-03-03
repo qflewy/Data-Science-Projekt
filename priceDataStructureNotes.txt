@@ -1,0 +1,2 @@
+-Tankstellen uuid herausfinden -> gibt es eine API um die zugehörige tankstelle mit der jeweiligen id zu identifizieren?
+-
