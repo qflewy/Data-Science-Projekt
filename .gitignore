@@ -1,3 +1,5 @@
 venv/
 .cache.sqlite
 .cache.sqlite
+__pycache__/
+*.pyc
