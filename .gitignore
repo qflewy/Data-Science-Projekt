@@ -1,1 +1,3 @@
 venv/
+.cache.sqlite
+.cache.sqlite
