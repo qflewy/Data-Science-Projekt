@@ -126,6 +126,7 @@ def display_weather_codes_per_region(weather_path:Path,region:str,year:str):
                         opacity=0.6),
             name="weather code",
             hovertemplate="Date: %{x}<br>weather code: %{y}<extra></extra>"
+            #TODO: weather code als beschreibung und nicht als zahl angeben (->vgl wetter code csv aus git)
 
         )
     )
