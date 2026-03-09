@@ -7,6 +7,7 @@ from scipy import stats
 import pandas as pd
 import polars.selectors as cs
 from IPython.display import display
+from pyfixest.estimation import feols #just for test method
 
 def display_weather_per_region(weather_path:Path,region:str,year:str):
     
@@ -210,7 +211,7 @@ def levene_test_for_extreme_weather(weather_path:Path, region_price_path:Path, r
         )
 
         # event interval: +/- 3 days | controll interval: >7 days from event
-        event_mask = pl.col("days_to_event") <= 3
+        event_mask = pl.col("days_to_event") <= 1
         controll_mask = pl.col("days_to_event") > 7
 
         df_event = df_analysis.filter(event_mask)
@@ -255,7 +256,7 @@ def levene_test_for_extreme_weather(weather_path:Path, region_price_path:Path, r
 
             #Levene test (tests the equality of the variance of two populations) 
             #TODO: add latex description to notebook (https://de.wikipedia.org/wiki/Levene-Test)
-            stat, p_value =stats.levene(arr_e, arr_c)
+            stat, p_value = stats.levene(arr_e, arr_c)
 
             results_region.append({
                 "region": region,
@@ -352,7 +353,7 @@ def extract_arrays_for_global_test(weather_path:Path, region_price_path:Path, re
         )
 
         # event interval: +/- 3 days | control interval: >7 days from event
-        event_mask = pl.col("days_to_event") <= 3
+        event_mask = pl.col("days_to_event") <= 1
         controll_mask = pl.col("days_to_event") > 7
 
         df_event = df_analysis.filter(event_mask)
@@ -411,3 +412,76 @@ def calculate_global_levene(global_arrays:dict):
             "note": "Global Success!"
         })
     return global_results
+
+#TODO: falls methode weiter genutzt werden soll, muss sie an standards angepasst werden
+#aktuell nur kurz zu testzwecken eingefügt!!
+#aktuell testet es nur diesel!!!
+
+def run_volatility_panel_regression(ordner_preise: Path, ordner_wetter: Path, regionen: list):
+    """
+    Erstellt ein riesiges Panel aus allen Regionen und schätzt den Effekt 
+    von Extremwetter auf die Preisvolatilität via Fixed Effects Regression.
+    """
+    df_list = []
+    
+    extreme_codes_df = pd.read_csv(Path(r'/Users/sebastian/data-science-projekt/extreme_weather_codes_copy.csv'))
+    extreme_codes =  extreme_codes_df["Weather Codes"].to_list()
+
+    print("1. Lade und verarbeite regionale Daten für das Panel...")
+    for region in regionen:
+        preis_datei = ordner_preise / f"mean_median_price_region_{region}.csv"
+        wetter_datei = ordner_wetter / f"weather_region{region}.csv"
+
+        if preis_datei.exists() and wetter_datei.exists():
+            # Wir nutzen LazyFrames (scan_csv), damit Polars extrem RAM-schonend arbeitet
+            lf_preis = pl.scan_csv(preis_datei, try_parse_dates=True)
+            lf_wetter = pl.scan_csv(wetter_datei, try_parse_dates=True).select(["date", "weather_code"])
+
+            lf = (
+                lf_preis.join(lf_wetter, left_on="timestamp_utc", right_on="date", how="inner")
+                .sort("timestamp_utc")
+                .with_columns([
+                    # Füge die Region als Spalte hinzu (Wichtig für das Panel!)
+                    pl.lit(region).alias("region"),
+                    
+                    # VOLATILITÄT: Absoluter Betrag der Preisdifferenz
+                    pl.col("e10_median").diff().abs().alias("volatilitaet"),
+                    
+                    # DUMMY: 1 wenn Extremwetter, sonst 0
+                    pl.col("weather_code").is_in(extreme_codes).cast(pl.Int8).alias("extremwetter"),
+                    
+                    # FIXED EFFECTS DIMENSIONEN: Datum und Stunde extrahieren
+                    pl.col("timestamp_utc").dt.date().alias("datum"),
+                    pl.col("timestamp_utc").dt.hour().alias("stunde")
+                ])
+                # Regressionen hassen Null-Werte, also werfen wir die erste leere Diff-Zeile weg
+                .drop_nulls("volatilitaet") 
+            )
+            # Führt den Lazy-Plan aus und packt das DataFrame in die Liste
+            df_list.append(lf.collect()) 
+
+    print("2. Setze Panel-Datensatz zusammen...")
+    # Klebt alle Regionen untereinander
+    df_panel = pl.concat(df_list)
+
+    print(f"Panel erstellt! {df_panel.height:,} Zeilen. Konvertiere für pyfixest...")
+    # pyfixest braucht ein Pandas DataFrame
+    df_pandas = df_panel.to_pandas()
+
+    print("3. Berechne Fixed Effects Regression & Clustered Standard Errors...")
+    # DIE REGRESSION
+    # Syntax: Abhängige_Variable ~ Unabhängige_Variable | Fixed_Effects
+    # vcov={'CRV1': 'region'} -> Clustered Standard Errors auf Regionsebene!
+    modell = feols(
+        "volatilitaet ~ extremwetter | region + datum + stunde", 
+        data=df_pandas, 
+        vcov={'CRV1': 'region'}
+    )
+
+    print("\n" + "="*50)
+    print(" ERGEBNIS DER PANEL-REGRESSION")
+    print("="*50)
+    # Zeigt die wissenschaftliche Summary-Tabelle an
+    modell.summary()
+
+    return modell
