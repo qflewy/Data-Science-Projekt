@@ -4,6 +4,20 @@ import numpy as np
 from sklearn.cluster import DBSCAN
 import polars as pl
 import plotly.express as px
+from math import radians, sin, cos, sqrt, atan2
+
+
+def haversine(lat1, lon1, lat2, lon2):
+    R = 6371  # Earth radius in km
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+    a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1-a))
+    return R * c
+
+
+def haversine_metric(p1, p2):
+    return haversine(p1[0], p1[1], p2[0], p2[1])
 
 
 def getCSVData(file_path):
@@ -13,7 +27,7 @@ def getCSVData(file_path):
 
 def performDBSCAN(data, eps, min_samples):
     cords = data.select(["latitude", "longitude"]).to_numpy()
-    dbscan = DBSCAN(eps=eps, min_samples=min_samples)
+    dbscan = DBSCAN(eps=eps, min_samples=min_samples, metric=haversine_metric)
     labels = dbscan.fit_predict(cords)
     unique_labels = set(labels)
     num_clusters = len(unique_labels) - (1 if -1 in unique_labels else 0)
