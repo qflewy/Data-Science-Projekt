@@ -54,18 +54,43 @@ def load_brent(start: str, end: str, interval: str = "1d",) -> pd.DataFrame:
             f"No data returned for Brent ({ticker}) with start={start}, end={end}, interval={interval}. "
             "Yahoo may limit the lookback for intraday intervals (e.g., 1h)."
         )
-
     # Reset index to column; name may be 'Date' or 'Datetime' depending on interval
     df = df.reset_index()
-
     time_col = "Datetime" if "Datetime" in df.columns else "Date"
     out = df[[time_col, "Close"]].rename(columns={time_col: "time", "Close": "oil_close"})
 
-    # Make timezone-naive for merging with your fuel 'day'
+    # Make timezone-naive
     out["time"] = pd.to_datetime(out["time"]).dt.tz_localize(None)
-
     # Sort
     out = out.sort_values("time").reset_index(drop=True)
+    # ---------------------------------------------------
+    # Load EUR/USD exchange rate
+    # ---------------------------------------------------
+    fx = yf.Ticker("EURUSD=X").history(start=start, end=end, interval=interval)
+    if fx is None or fx.empty:
+        raise RuntimeError("No FX data returned for EURUSD.")
+    fx = fx.reset_index()
+    fx_time_col = "Datetime" if "Datetime" in fx.columns else "Date"
+    fx = fx[[fx_time_col, "Close"]].rename(
+        columns={fx_time_col: "time", "Close": "eurusd"}
+    )
+    fx["time"] = pd.to_datetime(fx["time"]).dt.tz_localize(None)
+    fx = fx.sort_values("time")
+    # ---------------------------------------------------
+    # Merge Brent and FX (robust for hourly data)
+    # ---------------------------------------------------
+    merged = pd.merge_asof(
+        out.sort_values("time"),
+        fx.sort_values("time"),
+        on="time",
+        direction="backward"
+    )
+    merged["eurusd"] = merged["eurusd"].ffill().bfill()
+    # ---------------------------------------------------
+    # Convert USD → EUR
+    # ---------------------------------------------------
+    merged["oil_close"] = merged["oil_close"] / merged["eurusd"]
+    out = merged[["time", "oil_close"]]
 
     return out
 
@@ -92,56 +117,24 @@ def set_plot_style():
     })
 
 
-def compute_ccf_year(year, fuel_type="e5_mean_last", K_LAG=50):
 
-    oil = load_brent(f"{year}-01-01", f"{year+1}-01-01", interval="1d")
+def load_merge_year(year: int, fuel_type: str, interval: str = "1d") -> pd.DataFrame:
+    """
+    Load one year of national fuel data + Brent oil, merge on day, forward-fill oil.
+    Returns columns: day, fuel_price, oil_close
+    """
+    oil = load_brent(f"{year}-01-01", f"{year+1}-01-01", interval=interval)
     fuel_path = DEFAULT_DERIVED_DIR / f"national_daily_last_{year}.csv"
     fuel = pd.read_csv(fuel_path)
 
     oil["day"] = pd.to_datetime(oil["time"]).dt.normalize()
-    oil = oil[["day","oil_close"]]
-    fuel["day"] = pd.to_datetime(fuel["day"]).dt.date
-    oil["day"] = pd.to_datetime(oil["day"]).dt.tz_localize(None).dt.date
-    fuel = fuel[["day", fuel_type]]
-
-    merged = fuel.merge(oil,on="day",how="left").sort_values("day")
-    merged["oil_close"] = merged["oil_close"].ffill()
-    merged = merged.dropna()
-    df = merged.copy()
-
-    df["r_fuel"] = np.log(df[fuel_type]).diff()
-    df["r_oil"] = np.log(df["oil_close"]).diff()
-    df = df.dropna()
-
-    lags = pd.concat([df["r_oil"].shift(k) for k in range(K_LAG+1)], axis=1)
-    lags.columns = [f"lag{k}" for k in range(K_LAG+1)]
-    df = pd.concat([df,lags],axis=1)
-    data = df.dropna()
-    corr = data[lags.columns].corrwith(data["r_fuel"])
-
-    return corr
-
-
-def load_and_merge_year(
-    year: int,
-    fuel_type: str,
-    fuel_dir: Path = DEFAULT_DERIVED_DIR,
-    interval: str = "1d",
-) -> pd.DataFrame:
-    # --- load oil ---
-    oil = load_brent(f"{year}-01-01", f"{year+1}-01-01", interval=interval)
-    oil["day"] = pd.to_datetime(oil["time"]).dt.normalize()
     oil = oil[["day", "oil_close"]]
+
+    fuel["day"] = pd.to_datetime(fuel["day"]).dt.date
     oil["day"] = pd.to_datetime(oil["day"]).dt.tz_localize(None).dt.date
 
-    # --- load fuel ---
-    fuel_dir = Path(fuel_dir)
-    fuel_path = fuel_dir / f"national_daily_last_{year}.csv"
-    fuel = pd.read_csv(fuel_path)
-    fuel["day"] = pd.to_datetime(fuel["day"]).dt.date
     fuel = fuel[["day", fuel_type]].rename(columns={fuel_type: "fuel_price"})
 
-    # --- merge + fill ---
     merged = fuel.merge(oil, on="day", how="left").sort_values("day")
     merged["oil_close"] = merged["oil_close"].ffill()
     merged = merged.dropna(subset=["fuel_price", "oil_close"]).reset_index(drop=True)
@@ -149,15 +142,41 @@ def load_and_merge_year(
     return merged
 
 
-def build_panel_dataset(
-    years,
-    fuel_type: str,
-    fuel_dir: Path = DEFAULT_DERIVED_DIR,
-) -> pd.DataFrame:
-    out = []
-    for y in years:
-        df_y = load_and_merge_year(y, fuel_type=fuel_type, fuel_dir=fuel_dir)
-        df_y["year"] = y
-        out.append(df_y)
+def add_returns_and_lags(df: pd.DataFrame, K_LAG: int) -> pd.DataFrame:
+    """
+    Add log-returns r_fuel, r_oil and lag columns r_oil_lag0..K_LAG.
+    Drops NaNs created by diff/shift.
+    Expects columns: fuel_price, oil_close
+    """
+    out = df.copy()
 
-    return pd.concat(out, ignore_index=True)
+    out["r_fuel"] = np.log(out["fuel_price"]).diff()
+    out["r_oil"]  = np.log(out["oil_close"]).diff()
+
+    out = out.dropna(subset=["r_fuel", "r_oil"]).reset_index(drop=True)
+
+    lags = pd.concat([out["r_oil"].shift(k) for k in range(K_LAG + 1)], axis=1)
+    lags.columns = [f"r_oil_lag{k}" for k in range(K_LAG + 1)]
+
+    out = pd.concat([out, lags], axis=1)
+
+    lag_cols = list(lags.columns)
+    out = out.dropna(subset=lag_cols + ["r_fuel"]).reset_index(drop=True)
+
+    return out
+
+
+def compute_ccf_from_prepared(prep: pd.DataFrame, K_LAG: int) -> pd.Series:
+    """
+    Compute CCF = corr(r_fuel_t, r_oil_{t-k}) for k=0..K_LAG from prepared dataframe.
+    Expects columns r_fuel and r_oil_lag0..K_LAG.
+    """
+    lag_cols = [f"r_oil_lag{k}" for k in range(K_LAG + 1)]
+    return prep[lag_cols].corrwith(prep["r_fuel"])
+
+def compute_ccf_year(year: int, fuel_type: str = "e5_mean_last", K_LAG: int = 50) -> pd.Series:
+    merged = load_merge_year(year, fuel_type=fuel_type, interval="1d")
+    prep = add_returns_and_lags(merged, K_LAG=K_LAG)
+    corr = compute_ccf_from_prepared(prep, K_LAG=K_LAG)
+    corr.index = [f"lag{k}" for k in range(K_LAG + 1)]  # optional
+    return corr
