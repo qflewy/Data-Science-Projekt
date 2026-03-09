@@ -1,3 +1,5 @@
+#modified from build_station_daily_last_by_month.py to calculate mean and median instead of last price, with the help of Copilot
+
 from pathlib import Path
 import polars as pl
 
