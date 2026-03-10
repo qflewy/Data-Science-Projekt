@@ -7,7 +7,7 @@ from scipy import stats
 import pandas as pd
 import polars.selectors as cs
 from IPython.display import display
-from pyfixest.estimation import feols #just for test method
+from pyfixest.estimation import feols #just for test method panel regression
 
 def display_weather_per_region(weather_path:Path,region:str,year:str):
     
