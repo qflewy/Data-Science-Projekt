@@ -1,14 +1,6 @@
 """
-Research Question: Brand gas stations vs. free gas stations in Germany.
-
-Steps:
-1. Load stations.parquet and normalize the brand column (strip whitespace, uppercase).
-2. Count stations per normalized brand.
-3. Classify: "brand_station" if brand count >= BRAND_THRESHOLD, else "free_station".
-4. Join classification with all price data (lazy scan over parquet files).
-5. Compute mean/median prices per station type, fuel, and year.
+Research Question 4: Price differences brand gas stations vs. free gas stations.
 """
-
 import polars as pl
 from pathlib import Path
 
@@ -18,12 +10,11 @@ STATIONS_PARQUET = Path("d:/Tankdaten/stations/stations/stations.parquet")
 PRICES_DIR = Path("d:/Tankdaten/prices_parquet")
 OUTPUT_DIR = Path("d:/Tankdaten/rq_brand_vs_free")
 
-# Minimum number of stations a brand must have to be considered a "brand station"
-BRAND_THRESHOLD = 50
+brands = ["ARAL", "SHELL", "JET", "TOTAL", "ESSO", "AVIA", "TOTAL ENERGIES", "HEM"]
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def load_and_classify_stations(parquet_path: Path, threshold: int) -> pl.DataFrame:
+def load_and_classify_stations(parquet_path: Path, brands) -> pl.DataFrame:
     """
     Returns a DataFrame with columns:
         uuid, brand_normalized, station_type ("brand_station" | "free_station")
@@ -38,42 +29,18 @@ def load_and_classify_stations(parquet_path: Path, threshold: int) -> pl.DataFra
         .alias("brand_normalized")
     )
 
-    # Exact brand values that indicate a free/independent station.
-    # These include split fragments from the raw data where e.g. "Freie Tankstelle"
-    # was entered as two separate rows "Freie" and "Tankstelle".
-    FREE_EXACT = {"FREIE", "FREIE TANKSTELLE", "FREI"}
-
-    # Use exact equality (not substring) to avoid falsely nulling brands like "AVIA XPRESS"
-    is_free_keyword = pl.col("brand_normalized").is_in(list(FREE_EXACT))
-
-    # Null out brands that match free-station values
-    df = df.with_columns(
-        pl.when(pl.col("brand_normalized").is_null() | is_free_keyword)
-        .then(None)
-        .otherwise(pl.col("brand_normalized"))
-        .alias("brand_normalized")
-    )
-
-    # Count how many stations each normalized brand has
-    brand_counts = (
-        df.group_by("brand_normalized")
-        .agg(pl.len().alias("brand_count"))
-    )
-
-    df = df.join(brand_counts, on="brand_normalized", how="left")
-
     # Classify: null brand → always "free_station"
     df = df.with_columns(
         pl.when(
             pl.col("brand_normalized").is_not_null()
-            & (pl.col("brand_count") >= threshold)
+            & (pl.col("brand_normalized").is_in(brands))
         )
         .then(pl.lit("brand_station"))
         .otherwise(pl.lit("free_station"))
         .alias("station_type")
     )
 
-    print(f"\nStation classification (threshold={threshold}):")
+    print(f"\nStation classification:")
     print(
         df.group_by("station_type")
         .agg(pl.len().alias("count"))
@@ -88,16 +55,6 @@ def load_and_classify_stations(parquet_path: Path, threshold: int) -> pl.DataFra
         .sort("count", descending=True)
         .head(30)
     )
-
-    print(f"\nBottom 20 brand stations by brand count")
-    print(
-        df.filter(pl.col("station_type") == "brand_station")
-        .group_by("brand_normalized")
-        .agg(pl.len().alias("count"))
-        .sort("count", descending=True)
-        .tail(20)
-    )
-
     return df.select(["uuid", "brand_normalized", "station_type"])
 
 
@@ -151,11 +108,7 @@ def _combine_and_finalize(partials: list[pl.DataFrame], group_cols: list[str]) -
     return combined
 
 
-def compute_price_stats(
-    prices_dir: Path,
-    station_classification: pl.DataFrame,
-    output_dir: Path,
-) -> None:
+def compute_price_stats(prices_dir: Path, station_classification: pl.DataFrame, output_dir: Path,) -> None:
     """
     Processes one parquet file at a time to keep RAM usage low.
     Each file is read, joined, aggregated (tiny result), then discarded.
@@ -167,15 +120,13 @@ def compute_price_stats(
     if not parquet_files:
         raise FileNotFoundError(f"No parquet files found in {prices_dir}")
 
-    print(f"\nFound {len(parquet_files)} price parquet files. Processing one at a time...")
-
     partials_type:  list[pl.DataFrame] = []
     partials_brand: list[pl.DataFrame] = []
 
     for i, pf in enumerate(parquet_files, 1):
         print(f"  [{i}/{len(parquet_files)}] {pf.name}", end=" ... ", flush=True)
 
-        # Load one month — only the columns we need
+        # Load one month — only the needed columns
         df = pl.read_parquet(pf, columns=["station_uuid", "date", "diesel", "e5", "e10"])
 
         # Join with station classification (small lookup table, stays in RAM)
@@ -186,7 +137,7 @@ def compute_price_stats(
             pl.col("date").str.slice(0, 4).cast(pl.Int16).alias("year")
         )
 
-        # Aggregate by station_type × year (at most 2 rows per file)
+        # Aggregate by station_type × year for all stations
         partials_type.append(_agg_month(df, ["station_type", "year"]))
 
         # Aggregate by brand × year for brand stations only
@@ -215,9 +166,7 @@ def compute_price_stats(
 
 if __name__ == "__main__":
     print("=== Brand vs. Free Gas Stations (Germany) ===")
-    print(f"Brand threshold: >= {BRAND_THRESHOLD} stations\n")
 
-    station_df = load_and_classify_stations(STATIONS_PARQUET, BRAND_THRESHOLD)
+    station_df = load_and_classify_stations(STATIONS_PARQUET, brands)
     compute_price_stats(PRICES_DIR, station_df, OUTPUT_DIR)
-    # load_and_classify_stations(STATIONS_PARQUET, BRAND_THRESHOLD)
     print("\nDone.")
