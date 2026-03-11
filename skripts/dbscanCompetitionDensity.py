@@ -40,8 +40,6 @@ def plotClusters(data, labels):
 
     # Clusterlabels zum DataFrame hinzufügen
     data = data.with_columns(pl.Series("cluster", labels))
-
-    # Plotly arbeitet einfacher mit pandas
     pdf = data.to_pandas()
 
     # distinguish between noise (-1) and points in a cluster
@@ -104,92 +102,114 @@ def join_labels_and_group(daily_prices, cluster_csv, cluster_name):
     return df_joined
 
 
-def plot_cluster_prices_lazy_full(parquet_files, cluster_csv, fuel="diesel", title=None):
-    """
-    RAM-effiziente Version der Cluster-Plot-Funktion mit LazyFrames.
-    Beibehaltung aller bisherigen Features: Mean & Median, Cluster vs Noise, fuel wählbar.
+def plot_cluster_prices(
+        parquet_files,
+        cluster_csv,
+        fuel="diesel",
+        motorway_df=None,
+        title=None):
 
-    Parameters
-    ----------
-    parquet_files : list of str
-        Liste der Parquet-Dateien für die Tagespreise.
-    cluster_csv : str
-        Pfad zur CSV-Datei mit cluster labels.
-    fuel : str
-        Kraftstoffart: "diesel", "e5", "e10"
-    title : str
-        Plot-Titel.
-    """
-
-    # 1️⃣ LazyFrame für Tagespreise aus Parquet
-    daily_prices_lazy = pl.concat([pl.scan_parquet(f) for f in parquet_files])
-    
-    # 2️⃣ Nur die relevanten Spalten laden
     mean_col = f"{fuel}_mean"
     median_col = f"{fuel}_median"
-    cols_needed = ["station_uuid", "day", mean_col, median_col]
-    daily_prices_lazy = daily_prices_lazy.select(cols_needed)
 
-    # 3️⃣ Cluster CSV als LazyFrame
-    clusters_lazy = pl.scan_csv(cluster_csv).rename({"cluster": "cluster_label"})
-    
-    # 4️⃣ Join: station_uuid -> uuid
-    df_joined = daily_prices_lazy.join(
-        clusters_lazy,
+    # Lazy parquet scan
+    daily_prices = pl.concat(
+        [pl.scan_parquet(f) for f in parquet_files]
+    ).select(["station_uuid","day",mean_col,median_col])
+
+    # optional Autobahnfilter
+    if motorway_df is not None:
+
+        daily_prices = daily_prices.join(
+            motorway_df.lazy(),
+            on="station_uuid",
+            how="anti"
+        )
+
+    clusters = pl.scan_csv(cluster_csv).rename(
+        {"cluster":"cluster_label"}
+    )
+
+    df = daily_prices.join(
+        clusters,
         left_on="station_uuid",
         right_on="uuid",
         how="left"
     )
-    
-    # 5️⃣ Cluster vs Noise Gruppe
-    df_joined = df_joined.with_columns(
+
+    df = df.with_columns(
         pl.when(pl.col("cluster_label") == -1)
         .then(pl.lit("noise"))
         .otherwise(pl.lit("cluster"))
         .alias("group")
     )
-    
-    # 6️⃣ Aggregation Mean & Median pro Tag & Gruppe (LazyFrame)
-    daily_groups = (
-        df_joined
-        .group_by(["day", "group"])
+
+    result = (
+        df.group_by(["day","group"])
         .agg([
             pl.col(mean_col).mean().alias("mean_price"),
             pl.col(median_col).mean().alias("median_price")
         ])
         .sort("day")
-        .collect()  # erst jetzt Materialisierung
+        .collect()
     )
-    
-    # 7️⃣ Zu Pandas für Plotly konvertieren
-    df_plot = daily_groups.to_pandas()
-    
-    # 8️⃣ Plotly-Figure erstellen (Mean = solid, Median = dotted)
+
+    pdf = result.to_pandas()
+
     fig = go.Figure()
-    for g in df_plot['group'].unique():
-        subset = df_plot[df_plot['group'] == g]
+
+    for g in pdf["group"].unique():
+
+        subset = pdf[pdf["group"]==g]
+
         fig.add_trace(go.Scatter(
-            x=subset['day'],
-            y=subset['mean_price'],
-            mode='lines',
-            name=f"{g} mean",
-            line=dict(dash='solid')
+            x=subset["day"],
+            y=subset["mean_price"],
+            mode="lines",
+            name=f"{g} mean"
         ))
+
         fig.add_trace(go.Scatter(
-            x=subset['day'],
-            y=subset['median_price'],
-            mode='lines',
+            x=subset["day"],
+            y=subset["median_price"],
+            mode="lines",
             name=f"{g} median",
-            line=dict(dash='dot')
+            line=dict(dash="dot")
         ))
-    
-    # 9️⃣ Layout
+
     fig.update_layout(
-        title=title or f"{fuel.capitalize()} Prices: Cluster vs Noise (Mean & Median)",
-        xaxis_title="Date",
-        yaxis_title=f"{fuel.capitalize()} Price (€)",
+        title=title,
         template="plotly_white",
         hovermode="x unified"
     )
-    
+
     return fig
+
+def analyse_motorway_clusters(cluster_csv, motorway_df):
+    
+    # Clusterlabels laden
+    clusters = pl.read_csv(cluster_csv)
+    
+    # Join mit Autobahnstationen
+    motorway_clusters = clusters.join(
+        motorway_df,
+        left_on="uuid",
+        right_on="station_uuid",
+        how="inner"
+    )
+    
+    # Gesamtzahl Autobahnstationen im Clustering
+    total_motorway = motorway_clusters.height
+    
+    # Noise
+    motorway_noise = motorway_clusters.filter(pl.col("cluster") == -1).height
+    
+    # Cluster
+    motorway_clustered = motorway_clusters.filter(pl.col("cluster") != -1).height
+    
+    print("Cluster file:", cluster_csv)
+    print("Motorway stations total:", total_motorway)
+    print("Motorway stations in clusters:", motorway_clustered)
+    print("Motorway stations as noise:", motorway_noise)
+    
+    return motorway_clusters
