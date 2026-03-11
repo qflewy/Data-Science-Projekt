@@ -5,6 +5,7 @@ from sklearn.cluster import DBSCAN
 import polars as pl
 import plotly.express as px
 import plotly.graph_objects as go
+import pandas as pd
 from math import radians, sin, cos, sqrt, atan2
 
 
@@ -213,3 +214,144 @@ def analyse_motorway_clusters(cluster_csv, motorway_df):
     print("Motorway stations as noise:", motorway_noise)
     
     return motorway_clusters
+
+
+def plot_cluster_difference(parquet_files, cluster_csv, fuel="diesel", motorway_df=None, title=None):
+    mean_col = f"{fuel}_mean"
+    median_col = f"{fuel}_median"
+
+    daily_prices = pl.concat([pl.scan_parquet(f) for f in parquet_files])\
+        .select(["station_uuid","day",mean_col,median_col])
+
+    if motorway_df is not None:
+        daily_prices = daily_prices.join(motorway_df.lazy(), on="station_uuid", how="anti")
+
+    clusters = pl.scan_csv(cluster_csv).rename({"cluster":"cluster_label"})
+    df = daily_prices.join(clusters, left_on="station_uuid", right_on="uuid", how="left")
+
+    df = df.with_columns(
+        pl.when(pl.col("cluster_label")==-1).then(pl.lit("noise")).otherwise(pl.lit("cluster")).alias("group")
+    )
+
+    grouped = df.group_by(["day","group"]).agg([
+        pl.col(mean_col).mean().alias("mean_price"),
+        pl.col(median_col).mean().alias("median_price")
+    ]).sort("day").collect()
+
+    pdf = grouped.to_pandas()
+    pdf["day"] = pd.to_datetime(pdf["day"])
+
+    pivot_mean = pdf.pivot(index="day", columns="group", values="mean_price")
+    pivot_median = pdf.pivot(index="day", columns="group", values="median_price")
+
+    diff_mean = pivot_mean["cluster"] - pivot_mean["noise"]
+    diff_median = pivot_median["cluster"] - pivot_median["noise"]
+    days = pivot_mean.index
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=days, y=diff_mean, mode="lines", name="Mean Difference", line=dict(color="blue")))
+    fig.add_trace(go.Scatter(x=days, y=diff_median, mode="lines", name="Median Difference", line=dict(color="red", dash="dot")))
+
+    fig.update_layout(
+        title=title or f"{fuel.capitalize()} Price Difference (Cluster - Noise)",
+        xaxis_title="Date",
+        yaxis_title=f"{fuel.capitalize()} Price Difference (€)",
+        template="plotly_white",
+        hovermode="x unified"
+    )
+
+    return fig
+
+def compute_cluster_counts_over_time(daily_prices, cluster_csv):
+    """
+    Berechnet pro Tag die Anzahl geclusterter und ungeclusterter Stationen 
+    sowie den Anteil geclustert.
+    """
+    # Cluster-Labels laden
+    clusters = pl.read_csv(cluster_csv).rename({"cluster":"cluster_label"})
+
+    # Join auf daily_prices
+    df = daily_prices.join(
+        clusters,
+        left_on="station_uuid",
+        right_on="uuid",
+        how="left"
+    )
+
+    # Gruppe: cluster vs noise
+    df = df.with_columns(
+        pl.when(pl.col("cluster_label") == -1)
+        .then(pl.lit("noise"))
+        .otherwise(pl.lit("cluster"))
+        .alias("group")
+    )
+
+    # Tages-Counts berechnen
+    counts = (
+        df.group_by(["day","group"])
+          .agg(pl.count().alias("count"))
+          .pivot(values="count", index="day", columns="group")
+          .fill_null(0)
+          .with_columns(
+              (pl.col("cluster") + pl.col("noise")).alias("total_count"),
+              (pl.col("cluster") / (pl.col("cluster") + pl.col("noise"))).alias("cluster_share")
+          )
+          .sort("day")
+    )
+
+    return counts
+
+def plot_cluster_counts_over_time(counts, title="Cluster vs Noise Over Time"):
+    """
+    Plottet die Anzahl geclusterter und ungeclusterter Stationen sowie den Anteil geclustert.
+    
+    counts: pl.DataFrame mit Spalten 'day', 'cluster', 'noise', 'total_count', 'cluster_share'
+    """
+    df = counts.to_pandas()
+    
+    fig = go.Figure()
+    
+    # Anzahl geclusterter Stationen
+    fig.add_trace(go.Scatter(
+        x=df['day'],
+        y=df['cluster'],
+        mode='lines',
+        name='Clustered stations',
+        line=dict(color='green')
+    ))
+    
+    # Anzahl ungeclusterter Stationen
+    fig.add_trace(go.Scatter(
+        x=df['day'],
+        y=df['noise'],
+        mode='lines',
+        name='Noise stations',
+        line=dict(color='red')
+    ))
+    
+    # Optional: Anteil geclustert auf sekundärer Achse
+    fig.add_trace(go.Scatter(
+        x=df['day'],
+        y=df['cluster_share'],
+        mode='lines',
+        name='Cluster share',
+        line=dict(color='blue', dash='dot'),
+        yaxis='y2'
+    ))
+    
+    # Layout mit sekundärer Achse
+    fig.update_layout(
+        title=title,
+        xaxis_title="Date",
+        yaxis_title="Number of stations",
+        yaxis2=dict(
+            title="Cluster share",
+            overlaying="y",
+            side="right",
+            range=[0,1]
+        ),
+        template="plotly_white",
+        hovermode="x unified"
+    )
+    
+    return fig
