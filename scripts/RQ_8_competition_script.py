@@ -1,4 +1,4 @@
-#With the help of CoPilot
+# Debugged with the help of CoPilot
 
 import numpy as np
 from sklearn.cluster import DBSCAN
@@ -27,6 +27,7 @@ def getCSVData(file_path):
     print(df)
     return df
 
+
 def performDBSCAN(data, eps, min_samples):
     cords = data.select(["latitude", "longitude"]).to_numpy()
     dbscan = DBSCAN(eps=eps, min_samples=min_samples, metric=haversine_metric)
@@ -36,6 +37,7 @@ def performDBSCAN(data, eps, min_samples):
     print(f"Number of clusters: {num_clusters}")
     print(labels)
     return labels
+
 
 def plotClusters(data, labels):
 
@@ -65,7 +67,6 @@ def plotClusters(data, labels):
 def create_CSV_with_cluster_labels(data, labels, output_path):
     data = data.with_columns(pl.Series("cluster", labels))
     data.write_csv(output_path)
-
 
 
 def join_labels_and_group(daily_prices, cluster_csv, cluster_name):
@@ -116,7 +117,7 @@ def plot_cluster_prices(
     # Lazy parquet scan
     daily_prices = pl.concat(
         [pl.scan_parquet(f) for f in parquet_files]
-    ).select(["station_uuid","day",mean_col,median_col])
+    ).select(["station_uuid", "day", mean_col, median_col])
 
     # optional Autobahnfilter
     if motorway_df is not None:
@@ -128,7 +129,7 @@ def plot_cluster_prices(
         )
 
     clusters = pl.scan_csv(cluster_csv).rename(
-        {"cluster":"cluster_label"}
+        {"cluster": "cluster_label"}
     )
 
     df = daily_prices.join(
@@ -146,7 +147,7 @@ def plot_cluster_prices(
     )
 
     result = (
-        df.group_by(["day","group"])
+        df.group_by(["day", "group"])
         .agg([
             pl.col(mean_col).mean().alias("mean_price"),
             pl.col(median_col).mean().alias("median_price")
@@ -161,7 +162,7 @@ def plot_cluster_prices(
 
     for g in pdf["group"].unique():
 
-        subset = pdf[pdf["group"]==g]
+        subset = pdf[pdf["group"] == g]
 
         fig.add_trace(go.Scatter(
             x=subset["day"],
@@ -185,6 +186,7 @@ def plot_cluster_prices(
     )
 
     return fig
+
 
 def analyse_motorway_clusters(cluster_csv, motorway_df):
     
@@ -213,27 +215,45 @@ def analyse_motorway_clusters(cluster_csv, motorway_df):
     print("Motorway stations in clusters:", motorway_clustered)
     print("Motorway stations as noise:", motorway_noise)
     
-    return motorway_clusters
+    # return motorway_clusters
 
 
-def plot_cluster_difference(parquet_files, cluster_csv, fuel="diesel", motorway_df=None, title=None):
+def plot_cluster_difference(
+        parquet_files,
+        cluster_csv,
+        fuel="diesel",
+        motorway_df=None,
+        title=None):
+    
     mean_col = f"{fuel}_mean"
     median_col = f"{fuel}_median"
 
     daily_prices = pl.concat([pl.scan_parquet(f) for f in parquet_files])\
-        .select(["station_uuid","day",mean_col,median_col])
+        .select(["station_uuid", "day", mean_col, median_col])
 
     if motorway_df is not None:
-        daily_prices = daily_prices.join(motorway_df.lazy(), on="station_uuid", how="anti")
+        daily_prices = daily_prices.join(
+            motorway_df.lazy(),
+            on="station_uuid",
+            how="anti"
+        )
 
     clusters = pl.scan_csv(cluster_csv).rename({"cluster":"cluster_label"})
-    df = daily_prices.join(clusters, left_on="station_uuid", right_on="uuid", how="left")
-
-    df = df.with_columns(
-        pl.when(pl.col("cluster_label")==-1).then(pl.lit("noise")).otherwise(pl.lit("cluster")).alias("group")
+    df = daily_prices.join(
+        clusters,
+        left_on="station_uuid",
+        right_on="uuid",
+        how="left"
     )
 
-    grouped = df.group_by(["day","group"]).agg([
+    df = df.with_columns(
+        pl.when(pl.col("cluster_label") == -1)
+        .then(pl.lit("noise"))
+        .otherwise(pl.lit("cluster"))
+        .alias("group")
+    )
+
+    grouped = df.group_by(["day", "group"]).agg([
         pl.col(mean_col).mean().alias("mean_price"),
         pl.col(median_col).mean().alias("median_price")
     ]).sort("day").collect()
@@ -241,16 +261,34 @@ def plot_cluster_difference(parquet_files, cluster_csv, fuel="diesel", motorway_
     pdf = grouped.to_pandas()
     pdf["day"] = pd.to_datetime(pdf["day"])
 
-    pivot_mean = pdf.pivot(index="day", columns="group", values="mean_price")
-    pivot_median = pdf.pivot(index="day", columns="group", values="median_price")
+    pivot_mean = pdf.pivot(
+        index = "day",
+        columns = "group",
+        values = "mean_price"
+        )
+    pivot_median = pdf.pivot(
+        index = "day",
+        columns = "group",
+        values = "median_price"
+        )
 
-    diff_mean = pivot_mean["cluster"] - pivot_mean["noise"]
-    diff_median = pivot_median["cluster"] - pivot_median["noise"]
-    days = pivot_mean.index
+    diff_df = pd.DataFrame({
+        "day": pivot_mean.index,
+        "mean_diff": pivot_mean["cluster"] - pivot_mean["noise"],
+        "median_diff": pivot_median["cluster"] - pivot_median["noise"]
+    })
 
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=days, y=diff_mean, mode="lines", name="Mean Difference", line=dict(color="blue")))
-    fig.add_trace(go.Scatter(x=days, y=diff_median, mode="lines", name="Median Difference", line=dict(color="red", dash="dot")))
+    fig.add_trace(
+        go.Scatter(x=diff_df["day"], 
+                   y=diff_df["mean_diff"], mode="lines", 
+                   name="Mean Difference", 
+                   line=dict(color="blue"))
+                   )
+
+    fig.add_trace(go.Scatter(x=diff_df["day"], y=diff_df["median_diff"],
+                             mode="lines", name="Median Difference",
+                             line=dict(color="red", dash="dot")))
 
     fig.update_layout(
         title=title or f"{fuel.capitalize()} Price Difference (Cluster - Noise)",
@@ -260,7 +298,8 @@ def plot_cluster_difference(parquet_files, cluster_csv, fuel="diesel", motorway_
         hovermode="x unified"
     )
 
-    return fig
+    return fig, diff_df
+
 
 def compute_cluster_counts_over_time(daily_prices, cluster_csv):
     """
@@ -268,7 +307,7 @@ def compute_cluster_counts_over_time(daily_prices, cluster_csv):
     sowie den Anteil geclustert.
     """
     # Cluster-Labels laden
-    clusters = pl.read_csv(cluster_csv).rename({"cluster":"cluster_label"})
+    clusters = pl.read_csv(cluster_csv).rename({"cluster": "cluster_label"})
 
     # Join auf daily_prices
     df = daily_prices.join(
@@ -288,7 +327,7 @@ def compute_cluster_counts_over_time(daily_prices, cluster_csv):
 
     # Tages-Counts berechnen
     counts = (
-        df.group_by(["day","group"])
+        df.group_by(["day", "group"])
           .agg(pl.count().alias("count"))
           .pivot(values="count", index="day", columns="group")
           .fill_null(0)
@@ -301,11 +340,14 @@ def compute_cluster_counts_over_time(daily_prices, cluster_csv):
 
     return counts
 
+
 def plot_cluster_counts_over_time(counts, title="Cluster vs Noise Over Time"):
     """
-    Plottet die Anzahl geclusterter und ungeclusterter Stationen sowie den Anteil geclustert.
+    Plot the number of clustered vs noise stations over time, along with the
+    cluster share.
     
-    counts: pl.DataFrame mit Spalten 'day', 'cluster', 'noise', 'total_count', 'cluster_share'
+    counts: 
+    pl.DataFrame mit Spalten 'day', 'cluster', 'noise', 'total_count', 'cluster_share'
     """
     df = counts.to_pandas()
     
@@ -329,7 +371,7 @@ def plot_cluster_counts_over_time(counts, title="Cluster vs Noise Over Time"):
         line=dict(color='red')
     ))
     
-    # Optional: Anteil geclustert auf sekundärer Achse
+    # Anteil geclustert auf sekundärer Achse
     fig.add_trace(go.Scatter(
         x=df['day'],
         y=df['cluster_share'],
@@ -348,10 +390,90 @@ def plot_cluster_counts_over_time(counts, title="Cluster vs Noise Over Time"):
             title="Cluster share",
             overlaying="y",
             side="right",
-            range=[0,1]
+            range=[0, 1]
         ),
         template="plotly_white",
         hovermode="x unified"
     )
     
+    return fig
+
+
+def plot_motorway_cluster_pies(cluster_csv1, cluster_csv2, motorway_df):
+
+    clusters1 = pl.read_csv(cluster_csv1)
+    clusters2 = pl.read_csv(cluster_csv2)
+
+    mw1 = clusters1.join(
+        motorway_df,
+        left_on="uuid",
+        right_on="station_uuid",
+        how="inner"
+    )
+
+    mw2 = clusters2.join(
+        motorway_df,
+        left_on="uuid",
+        right_on="station_uuid",
+        how="inner"
+    )
+
+    clustered1 = mw1.filter(pl.col("cluster") != -1).height
+    noise1 = mw1.filter(pl.col("cluster") == -1).height
+
+    clustered2 = mw2.filter(pl.col("cluster") != -1).height
+    noise2 = mw2.filter(pl.col("cluster") == -1).height
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Pie(
+        labels=["Cluster", "Noise"],
+        values=[clustered1, noise1],
+        marker=dict(colors=["green", "red"]),
+        textinfo="label+value",
+        domain={"x": [0.0, 0.45], "y": [0, 1]},
+        name="Cluster Set 1"
+    ))
+
+    fig.add_trace(go.Pie(
+        labels=["Cluster", "Noise"],
+        values=[clustered2, noise2],
+        marker=dict(colors=["green", "red"]),
+        textinfo="label+value",
+        domain={"x": [0.55, 1.0], "y": [0, 1]},
+        name="Cluster Set 2"
+    ))
+
+    fig.update_layout(
+        title="Motorway Stations in Clusters",
+        annotations=[
+            dict(text="Cluster Set 1", x=0.22, y=1.1, showarrow=False, font=dict(size=16)),
+            dict(text="Cluster Set 2", x=0.78, y=1.1, showarrow=False, font=dict(size=16))
+        ]
+    )
+
+    return fig
+
+
+def plot_yearly_boxplot(diff_df, cluster_name, fuel):
+    # Jahr extrahieren
+    diff_df["year"] = diff_df["day"].dt.year
+
+    fig = go.Figure()
+
+    for y in sorted(diff_df["year"].unique()):
+        fig.add_trace(go.Box(
+            y=diff_df.loc[diff_df["year"] == y, "mean_diff"],
+            name=str(y),
+            marker_color="blue",
+            showlegend=False
+        ))
+
+    fig.update_layout(
+        title=f"{fuel.capitalize()} Mean Price Difference by Year ({cluster_name})",
+        xaxis_title="Year",
+        yaxis_title="Price Difference (€) (Cluster - Noise)",
+        template="plotly_white"
+    )
+
     return fig
