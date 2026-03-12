@@ -3,3 +3,5 @@ __pycache__/
 *.pyc
 .DS_Store
 .cache.sqlite
+Notebooks/stations.parquet
+Notebooks/station_stats_*.parquet
