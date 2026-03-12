@@ -7,21 +7,42 @@ from pathlib import Path
 # ── Config ───────────────────────────────────────────────────────────────────
 
 STATIONS_PARQUET = Path("d:/Tankdaten/stations/stations/stations.parquet")
+AUTOBAHN_CSV = Path("d:/Tankdaten/stations/stations/autobahn_stations.csv")
 PRICES_DIR = Path("d:/Tankdaten/prices_parquet")
 OUTPUT_DIR = Path("d:/Tankdaten/rq_brand_vs_free")
 
-brands = ["ARAL", "SHELL", "JET", "TOTAL", "ESSO", "AVIA", "TOTAL ENERGIES", "HEM"]
+brands = ["ARAL", "SHELL", "JET", "TOTAL", "ESSO", "AVIA", "TOTAL ENERGIES", "HEM", "HOYER", "ORLEN", "Q1", "ORLEN", "STAR", "RAIFFEISEN", "AGIP", "OMV", "OIL!", "WESTFALEN", "ENI"]
+
+# Known brand variants in the data → mapped to their canonical brand name above.
+# HEMPELMANN / HEMSAER are deliberately excluded (not HEM-branded stations).
+BRAND_ALIASES: dict[str, str] = {
+    "AVIA SCHMIDT":                    "AVIA",
+    "AVIA XPRESS":                     "AVIA",
+    "AVIA XPRESS AUTOMATENTANKSTELLE": "AVIA",
+    "SHELL BASEDOW":                   "SHELL",
+    "HOYER BEI DODENHOF":              "HOYER",
+    "HOYER TANK-TREFF LINDAU":         "HOYER",
+    "WESTFALEN TANKSTELLE":            "WESTFALEN",
+    "WESTFALEN-TANKSTELLE":            "WESTFALEN",
+}
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def load_and_classify_stations(parquet_path: Path, brands) -> pl.DataFrame:
+def load_and_classify_stations(parquet_path: Path, brands, autobahn_csv: Path) -> pl.DataFrame:
     """
     Returns a DataFrame with columns:
         uuid, brand_normalized, station_type ("brand_station" | "free_station")
+    Highway (Autobahn) stations are excluded entirely.
     """
     df = pl.read_parquet(parquet_path)
 
-    # Normalize: strip surrounding whitespace, fold to uppercase
+    # Exclude highway stations
+    autobahn_uuids = pl.read_csv(autobahn_csv, columns=["uuid"])["uuid"]
+    n_before = df.height
+    df = df.filter(~pl.col("uuid").is_in(autobahn_uuids))
+    print(f"Excluded {n_before - df.height} highway stations ({len(autobahn_uuids)} in autobahn list)")
+
+    # Normalize: fold to uppercase
     df = df.with_columns(
         pl.col("brand")
         .str.strip_chars()
@@ -29,11 +50,18 @@ def load_and_classify_stations(parquet_path: Path, brands) -> pl.DataFrame:
         .alias("brand_normalized")
     )
 
-    # Classify: null brand → always "free_station"
+    # Apply aliases: e.g. "AVIA XPRESS" → "AVIA"
+    df = df.with_columns(
+        pl.col("brand_normalized")
+        .replace(BRAND_ALIASES)
+        .alias("brand_normalized")
+    )
+
+    # Classify: exact match against brands list → "brand_station", everything else → "free_station"
     df = df.with_columns(
         pl.when(
             pl.col("brand_normalized").is_not_null()
-            & (pl.col("brand_normalized").is_in(brands))
+            & pl.col("brand_normalized").is_in(brands)
         )
         .then(pl.lit("brand_station"))
         .otherwise(pl.lit("free_station"))
@@ -47,13 +75,14 @@ def load_and_classify_stations(parquet_path: Path, brands) -> pl.DataFrame:
         .sort("station_type")
     )
 
-    print(f"\nTop 30 brand stations by size:")
+    n = 20
+    print(f"\nTop {n} brand stations by size:")
     print(
         df.filter(pl.col("station_type") == "brand_station")
         .group_by("brand_normalized")
         .agg(pl.len().alias("count"))
         .sort("count", descending=True)
-        .head(30)
+        .head(n)
     )
     return df.select(["uuid", "brand_normalized", "station_type"])
 
@@ -86,7 +115,7 @@ def _agg_month(df_month: pl.DataFrame, group_cols: list[str]) -> pl.DataFrame:
 def _combine_and_finalize(partials: list[pl.DataFrame], group_cols: list[str]) -> pl.DataFrame:
     """
     Concat all monthly partial aggregates, re-group, and compute final means
-    from (sum, count) pairs. Means are exact; no medians (not combinable).
+    from (sum, count) pairs.
     """
     fuels = ["diesel", "e5", "e10"]
 
@@ -112,7 +141,7 @@ def compute_price_stats(prices_dir: Path, station_classification: pl.DataFrame, 
     """
     Processes one parquet file at a time to keep RAM usage low.
     Each file is read, joined, aggregated (tiny result), then discarded.
-    Final means are computed by combining (sum, count) pairs — exact.
+    Final means are computed by combining (sum, count) pairs.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -167,6 +196,6 @@ def compute_price_stats(prices_dir: Path, station_classification: pl.DataFrame, 
 if __name__ == "__main__":
     print("=== Brand vs. Free Gas Stations (Germany) ===")
 
-    station_df = load_and_classify_stations(STATIONS_PARQUET, brands)
+    station_df = load_and_classify_stations(STATIONS_PARQUET, brands, AUTOBAHN_CSV)
     compute_price_stats(PRICES_DIR, station_df, OUTPUT_DIR)
     print("\nDone.")
