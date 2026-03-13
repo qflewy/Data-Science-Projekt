@@ -76,10 +76,10 @@ def join_labels_and_group(daily_prices, cluster_csv, cluster_name):
     cluster_name: str, z.B. "eps1" oder "eps2"
     """
     clusters = pl.read_csv(cluster_csv)
-    
+
     # Cluster-Labeling sauber umbenennen
     clusters = clusters.rename({"cluster": "cluster_label"})
-    
+
     # Join
     df_joined = daily_prices.join(
         clusters,
@@ -87,7 +87,7 @@ def join_labels_and_group(daily_prices, cluster_csv, cluster_name):
         right_on="uuid",  # je nachdem ob CSV 'uuid' oder 'station_uuid' hat
         how="left"
     )
-    
+
     # Gruppe: Noise vs Cluster
     df_joined = df_joined.with_columns(
         pl.when(pl.col("cluster_label") == -1)
@@ -95,12 +95,12 @@ def join_labels_and_group(daily_prices, cluster_csv, cluster_name):
         .otherwise(pl.lit("cluster"))
         .alias("group")
     )
-    
+
     # Kennzeichnung für Cluster-Parameter
     df_joined = df_joined.with_columns(
         pl.lit(cluster_name).alias("cluster_method")
     )
-    
+
     return df_joined
 
 
@@ -189,10 +189,10 @@ def plot_cluster_prices(
 
 
 def analyse_motorway_clusters(cluster_csv, motorway_df):
-    
+
     # Clusterlabels laden
     clusters = pl.read_csv(cluster_csv)
-    
+
     # Join mit Autobahnstationen
     motorway_clusters = clusters.join(
         motorway_df,
@@ -200,21 +200,21 @@ def analyse_motorway_clusters(cluster_csv, motorway_df):
         right_on="station_uuid",
         how="inner"
     )
-    
+
     # Gesamtzahl Autobahnstationen im Clustering
     total_motorway = motorway_clusters.height
-    
+
     # Noise
     motorway_noise = motorway_clusters.filter(pl.col("cluster") == -1).height
-    
+
     # Cluster
     motorway_clustered = motorway_clusters.filter(pl.col("cluster") != -1).height
-    
+
     print("Cluster file:", cluster_csv)
     print("Motorway stations total:", total_motorway)
     print("Motorway stations in clusters:", motorway_clustered)
     print("Motorway stations as noise:", motorway_noise)
-    
+
     # return motorway_clusters
 
 
@@ -224,7 +224,7 @@ def plot_cluster_difference(
         fuel="diesel",
         motorway_df=None,
         title=None):
-    
+   
     mean_col = f"{fuel}_mean"
     median_col = f"{fuel}_median"
 
@@ -262,14 +262,14 @@ def plot_cluster_difference(
     pdf["day"] = pd.to_datetime(pdf["day"])
 
     pivot_mean = pdf.pivot(
-        index = "day",
-        columns = "group",
-        values = "mean_price"
+        index="day",
+        columns="group",
+        values="mean_price"
         )
     pivot_median = pdf.pivot(
-        index = "day",
-        columns = "group",
-        values = "median_price"
+        index="day",
+        columns="group",
+        values="median_price"
         )
 
     diff_df = pd.DataFrame({
@@ -345,14 +345,15 @@ def plot_cluster_counts_over_time(counts, title="Cluster vs Noise Over Time"):
     """
     Plot the number of clustered vs noise stations over time, along with the
     cluster share.
-    
-    counts: 
-    pl.DataFrame mit Spalten 'day', 'cluster', 'noise', 'total_count', 'cluster_share'
+
+    counts:
+    pl.DataFrame mit Spalten:
+    'day', 'cluster', 'noise', 'total_count', 'cluster_share'
     """
     df = counts.to_pandas()
-    
+
     fig = go.Figure()
-    
+
     # Anzahl geclusterter Stationen
     fig.add_trace(go.Scatter(
         x=df['day'],
@@ -361,7 +362,7 @@ def plot_cluster_counts_over_time(counts, title="Cluster vs Noise Over Time"):
         name='Clustered stations',
         line=dict(color='green')
     ))
-    
+
     # Anzahl ungeclusterter Stationen
     fig.add_trace(go.Scatter(
         x=df['day'],
@@ -370,7 +371,7 @@ def plot_cluster_counts_over_time(counts, title="Cluster vs Noise Over Time"):
         name='Noise stations',
         line=dict(color='red')
     ))
-    
+
     # Anteil geclustert auf sekundärer Achse
     fig.add_trace(go.Scatter(
         x=df['day'],
@@ -380,7 +381,7 @@ def plot_cluster_counts_over_time(counts, title="Cluster vs Noise Over Time"):
         line=dict(color='blue', dash='dot'),
         yaxis='y2'
     ))
-    
+
     # Layout mit sekundärer Achse
     fig.update_layout(
         title=title,
@@ -395,7 +396,7 @@ def plot_cluster_counts_over_time(counts, title="Cluster vs Noise Over Time"):
         template="plotly_white",
         hovermode="x unified"
     )
-    
+
     return fig
 
 
@@ -447,8 +448,14 @@ def plot_motorway_cluster_pies(cluster_csv1, cluster_csv2, motorway_df):
     fig.update_layout(
         title="Motorway Stations in Clusters",
         annotations=[
-            dict(text="Cluster Set 1", x=0.22, y=1.1, showarrow=False, font=dict(size=16)),
-            dict(text="Cluster Set 2", x=0.78, y=1.1, showarrow=False, font=dict(size=16))
+            dict(text="Cluster Set 1",
+                 x=0.22, y=1.1, showarrow=False,
+                 font=dict(size=16)),
+            dict(text="Cluster Set 2",
+                 x=0.78,
+                 y=1.1,
+                 showarrow=False,
+                 font=dict(size=16))
         ]
     )
 
