@@ -552,6 +552,7 @@ def plot_yearly_autobahn_premium_line(yearly_df:pd.DataFrame,statistic:str="mean
         
     )
     fig.update_xaxes(tickformat="%Y", dtick="M12")
+    save_png(fig, Path(r'rq3_premium_line.png'))
     fig.show()
 
 #dont use
@@ -642,11 +643,13 @@ def plot_autobahn_premium_barchart(yearly_df:pd.DataFrame,statistic:str="mean"):
             bgcolor = "rgba(255, 255, 255, 0)",
             bordercolor = "rgba(255, 255, 255, 0)"
         ),
+        template = "plotly_white",
         barmode = "group",
         bargap = .15,
         bargroupgap = .1 
     )
 
+    save_png(fig, Path(r'rq3_premium_barchart.png'),legend=True)
     fig.show()
 
 #NOTE:funktioniert noch nicht wie gewollt (verscheidene symbole für autobahn oder nicht klappen nicht)
@@ -897,6 +900,44 @@ def __mad(x):
     median = np.median(x)
     return np.median(np.abs(x - median))
 
+#saves plot to a png with sufficient resolution for poster
+def save_png(fig, img_name:Path, legend:bool=False):
+
+    px_w = 3000
+    px_h = 2250
+
+    fig = fig.full_figure_for_development(warn = False)
+    fig.update_layout(
+        autosize = False,
+        width = px_w/2,
+        height = px_h,
+        font = dict(size=44),
+        title = dict(font = dict(size =50),
+                     y = .98,
+                     x = .5,
+                     xanchor = "center",
+                     yanchor = "top")
+    )
+    if legend:
+        fig.update_layout(
+            legend=dict(
+                orientation="h",
+                yanchor="top",
+                font = dict(size = 38),
+                y= .92,
+                xanchor="left",
+                x=0
+            )
+        )
+
+    fig.update_xaxes(tickfont = dict(size = 38), title_font = dict(size = 40))
+    fig.update_yaxes(tickfont = dict(size = 38), title_font = dict(size = 40))
+
+    img_path = Path(r'/Users/sebastian/data-science-projekt/rq_results')
+    fig.write_image(img_path/img_name,
+                    width=px_w,
+                    height=px_h,
+                    scale=1)
 
 if __name__=="__main__":
    
