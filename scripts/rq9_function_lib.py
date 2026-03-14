@@ -1,11 +1,7 @@
 from pathlib import Path
 import polars as pl
 import plotly.graph_objects as go
-import numpy as np
-from scipy import stats
 import pandas as pd
-import polars.selectors as cs
-from IPython.display import display
 from linearmodels.iv.absorbing import AbsorbingLS
 
 
