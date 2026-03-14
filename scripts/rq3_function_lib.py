@@ -444,45 +444,117 @@ def perform_matched_panel_regression_autobahn_stations(median_price_path:Path,st
 def plot_yearly_autobahn_premium_line(yearly_df:pd.DataFrame,statistic:str="mean"):
 
     yearly_df = yearly_df[yearly_df["statistic"] == statistic]
+    yearly_df["year"] = pd.to_datetime(yearly_df["year"].astype(int).astype(str), format="%Y")
 
-    fig = px.line(
-        yearly_df,
-        x = "fuel_type",
-        y = "autobahn_coef",
-        color = "fuel_type",
-        markers = True,
-        hover_data={
-            "year": True,
-            "fuel_type": True,
-            "statistic": True,
-            "autobahn_coef":":.3f",
-            "ci_low":":.3f",
-            "ci_high":":.3f"},
-        title = "development of the autobahn premium over time"
-    )
+    fig = go.Figure()
 
-    #add confidence intervals for the fuel types
-    for fuel in yearly_df["fuel_type"].unique():
-        df = yearly_df[yearly_df["fuel_type"] == fuel].sort_values("year")
-        
-        fig.add_trace(go.Scatter(
-            x = pd.concat([df["year"], df["year"][::-1]]),
-            y = pd.concat([df["ci_high"], df["ci_low"][::-1]]),
-            fill = "toself",
-            mode = "none",
-            line = dict(width=0),
-            name = f"{fuel} CI",
-            showlegend = False,
-            opacity = .2,
-            hoverinfo = "skip"
+    fuel_types = ["diesel", "e5", "e10"]
+
+    fill_color_map = {
+        "diesel": "rgba(0,176,246,0.2)",
+        "e5": "rgba(0,100,80,0.2)",
+        "e10": "rgba(231,107,243,0.2)"
+    }
+    line_color_map = {
+        "diesel": "rgba(255,255,255,0)",
+        "e5": "rgba(255,255,255,0)",
+        "e10": "rgba(255,255,255,0)"
+
+    }
+    color_map = {
+        "diesel": "rgb(0,176,246)",
+        "e5": "rgb(0,100,80)",
+        "e10": "rgb(231,107,243)"
+    }
+
+
+    for i, fuel in enumerate(fuel_types):
+        df_sub = yearly_df[yearly_df["fuel_type"] == fuel].sort_values("year")
+
+        x_vals = df_sub["year"].to_list()
+        x_rev = x_vals[::-1]
+
+        y_upper = df_sub["ci_high"].to_list()
+        y_lower = df_sub["ci_low"].to_list()[::-1]
+
+        y_line = df_sub["autobahn_coef"].to_list()
+
+        custom_data = list(zip(
+            df_sub["year"].dt.year,
+            df_sub["autobahn_coef"],
+            df_sub["ci_high"],
+            df_sub["ci_low"]
         ))
+ 
+        #plot confidence intervalls
+        fig.add_trace(go.Scatter(
+            x = x_vals + x_rev,
+            y = y_upper + y_lower,
+            fill = "toself",
+            fillcolor = fill_color_map[fuel],
+            line_color = line_color_map[fuel],
+            name = fuel,
+            showlegend = False,
+            visible = (i == 0),
+            hoverinfo = "skip"
+            ))
+        
+        #plot autobahn premium line
+        fig.add_trace(go.Scatter(
+            x = x_vals,
+            y = y_line,
+            mode = "lines+markers",
+            line_color = color_map[fuel],
+            showlegend = False,
+            name = fuel,
+            visible = (i == 0),
+            customdata = custom_data,
+            hovertemplate = (
+                "Year: %{customdata[0]}<br>"
+                "Autobahn-Premium: %{customdata[1]:.3f} €/liter<br>"
+                "Upper confidance bound: %{customdata[2]:.3f} €/liter<br>"
+                "Lower confidance bound: %{customdata[3]:.3f} €/liter<br>"
+                "<extra></extra>"
+            ) 
+
+        ))
+        
+
+    buttons = []
+    for i, fuel in enumerate(fuel_types):
+        visible = [False] * (2 * len(fuel_types))
+        visible[2 * i] = True #conf. interval
+        visible[2 * i +1] = True #line
+
+        buttons.append(
+            dict(
+                label = fuel,
+                method = "update",
+                args = [{"visible": visible}, {"title": f"{fuel} price autobahnpremium with 95% confidence interval over the years"}]
+            )
+        )
+
+
     fig.update_layout(
+        updatemenus = [
+            dict(
+                buttons = buttons,
+                direction = "down",
+                showactive = True,
+                x = 1.05,
+                y = 1
+            )
+        ],
         xaxis_title = "year",
         yaxis_title = "estimated autobahn premium (€/liter)",
-        template = "plotly_white"
+        template = "plotly_white",
+        title = f"{fuel_types[0]} price autobahnpremium with 95% confidence interval over the years"
+        
     )
+    fig.update_xaxes(tickformat="%Y", dtick="M12")
     fig.show()
 
+#dont use
 def plot_autobahn_premium_histogram(yearly_df:pd.DataFrame):
     fig = px.histogram(
         yearly_df,
@@ -498,7 +570,7 @@ def plot_autobahn_premium_histogram(yearly_df:pd.DataFrame):
         template = "plotly_white"
     )
     fig.show()
-
+#dont use
 def plot_autobahn_premium_boxplot(yearly_df:pd.DataFrame):
     fig = px.box(
         yearly_df,
@@ -516,9 +588,11 @@ def plot_autobahn_premium_boxplot(yearly_df:pd.DataFrame):
     )
     fig.show()
 
-def plot_autobahn_premium_barchart(yearly_df:pd.DataFrame):
+def plot_autobahn_premium_barchart(yearly_df:pd.DataFrame,statistic:str="mean"):
 
     years = sorted(yearly_df["year"].unique())
+    yearly_df = yearly_df[yearly_df["statistic"] == statistic]
+    yearly_df["year"] = pd.to_datetime(yearly_df["year"].astype(int).astype(str), format="%Y")
 
     fig= go.Figure()
 
@@ -527,51 +601,56 @@ def plot_autobahn_premium_barchart(yearly_df:pd.DataFrame):
         "e5": "tomato",
         "e10": "mediumseagreen"
     }
+    y_diesel = yearly_df[yearly_df["fuel_type"] == "diesel"]
+    y_e5 = yearly_df[yearly_df["fuel_type"] == "e5"]
+    y_e10 = yearly_df[yearly_df["fuel_type"] == "e10"]
 
-    for i, year in enumerate(years):
-        df_sub = yearly_df[yearly_df["year"] == year]
+    fig.add_trace(go.Bar(
+        x = yearly_df["year"].dt.year,
+        y = y_diesel["autobahn_coef"],
+        name = "diesel",
+        marker_color = color_map["diesel"]
 
-        fig.add_trace(go.Bar(
-            x = df_sub["fuel_type"],
-            y = df_sub["autobahn_coef"],
-            name = str(year),
-            visible = (i == 0),
-            width = 0.45,
-            marker_color = df_sub["fuel_type"].map(color_map)
-        ))
-    buttons  = []
-    for i, year in enumerate(years):
-        visible = [False] * len(years)
-        visible[i] = True
+    ))
+    fig.add_trace(go.Bar(
+        x = yearly_df["year"].dt.year,
+        y = y_e5["autobahn_coef"],
+        name = "e5",
+        marker_color = color_map["e5"]
 
-        buttons.append(
-            dict(
-                label = str(year),
-                method = "update",
-                args = [{"visible": visible}, {"title": f"premium comparison for fuel types for {year}"}]
-            )
-        )
+    ))
+    fig.add_trace(go.Bar(
+        x = yearly_df["year"].dt.year,
+        y = y_e10["autobahn_coef"],
+        name = "e10",
+        marker_color = color_map["e10"]
+
+    ))
+
     fig.update_layout(
-        title = f"premium comparison for fuel types for {years[0]}",
-        updatemenus = [
-            dict(
-                buttons = buttons,
-                direction = "down",
-                showactive = True,
-                x = 1.05,
-                y = 1
-        )],
-        xaxis_title = "fuel types",
-        yaxis_title = "autobahn premium (€/liter)",
-        bargap = 0.35,
-        hovermode = "closest"
+        title = dict(text = "Development of the autobahn premium from 2024-2026"),
+        xaxis_tickfont_size = 14,
+        yaxis = dict(
+            title = dict(
+                text = "autobahn premium (€/liter)",
+                font = dict(size = 16)
+            )
+        ),
+        legend = dict(
+            x = 0,
+            y = 1.0,
+            bgcolor = "rgba(255, 255, 255, 0)",
+            bordercolor = "rgba(255, 255, 255, 0)"
+        ),
+        barmode = "group",
+        bargap = .15,
+        bargroupgap = .1 
     )
-    fig.update_yaxes(showspikes = False)
-    fig.update_xaxes(showspikes = False)
 
     fig.show()
 
 #NOTE:funktioniert noch nicht wie gewollt (verscheidene symbole für autobahn oder nicht klappen nicht)
+#TODO:so abändern, dass alle autobahn tankstellen geplottet werden
 def plot_station_price_map(analyses_panel:pl.DataFrame,fuel_type:str,statistic="median"):
     
     price_col = f"{fuel_type}_{statistic}"
