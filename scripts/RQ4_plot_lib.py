@@ -118,7 +118,7 @@ def plot_brand_comparison(df_per_brand, df_brandvsfree, fuel="e10_mean", brands=
         height=450,
         width=900,
     )
-    fig.show()
+    return fig
 
 
 def plot_avg_premium_per_brand(df_per_brand, free, fuel="e10_mean"):
