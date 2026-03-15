@@ -1,5 +1,6 @@
 # Debugged with the help of CoPilot
 
+from matplotlib.path import Path
 import numpy as np
 from sklearn.cluster import DBSCAN
 import polars as pl
@@ -484,3 +485,42 @@ def plot_yearly_boxplot(diff_df, cluster_name, fuel):
     )
 
     return fig
+
+
+def save_png(fig, img_name:Path, legend:bool=False):
+
+    px_w = 3000
+    px_h = 2250
+
+    fig = fig.full_figure_for_development(warn = False)
+    fig.update_layout(
+        autosize = False,
+        width = px_w/2,
+        height = px_h,
+        font = dict(size=44),
+        title = dict(font = dict(size =50),
+                     y = .98,
+                     x = .5,
+                     xanchor = "center",
+                     yanchor = "top")
+    )
+    if legend:
+        fig.update_layout(
+            legend=dict(
+                orientation="h",
+                yanchor="top",
+                font = dict(size = 38),
+                y= .92,
+                xanchor="left",
+                x=0
+            )
+        )
+
+    fig.update_xaxes(tickfont = dict(size = 38), title_font = dict(size = 40))
+    fig.update_yaxes(tickfont = dict(size = 38), title_font = dict(size = 40))
+
+    img_path = Path(r'C:\Users\Bjarne\Desktop\Uni\Data Science Projekt\images_for_poster')
+    fig.write_image(img_path/img_name,
+                    width=px_w,
+                    height=px_h,
+                    scale=1)
