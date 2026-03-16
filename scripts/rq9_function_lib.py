@@ -33,6 +33,7 @@ def display_weather_codes_per_region(weather_path:Path,weather_codes:Path,region
     fig= go.Figure()
 
     # create scatter plot.
+    # this part was created with the help of chatgpt
     fig.add_trace(
         go.Scatter(
             x = df_plot["date"],
@@ -72,6 +73,7 @@ def display_weather_codes_per_region(weather_path:Path,weather_codes:Path,region
 
     fig.show()
 
+#NOTE: parts of this method are written with the help of chatgpt.
 def run_volatility_panel_regression(price_path:Path,weather_path:Path,regions:list,extreme_weather_codes_file:Path,fuel_type:str="diesel",statistic:str="median",mad_window:int=24):
     '''
     Builds a panel dataset for each Leitregion and then estimates the effect of extreme weather on the gas stations price volatility.

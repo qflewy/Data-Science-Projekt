@@ -11,14 +11,22 @@ from IPython.display import display
 import numpy as np
 from linearmodels.iv import AbsorbingLS
 
+
 def show_median_price_heatmap_per_region(region_price_path:Path, region_path:Path, year:int, fuel_type:str):
+    '''
+    This function plots a map that dynamically projects the monthly median prices of a selected fuel type over a selected year for all post code Leitregionen. Returns nothing.
+    i: Path region_price_path, Path region_path, int year, string fuel_type
+    o: None
+    '''
 
     df_regions = pl.read_csv(region_path, dtypes={"leit_plz": pl.Utf8})
     regions = df_regions["leit_plz"].to_list()
 
-
+    #create an empty list for all the regional lazyframes.
     global_lf_list = []
 
+    #loop over all regions to calculate their monthly median.
+    #this part was written with the help of gemini.
     for region in regions:
         file_path = region_price_path / f"mean_median_price_region_{region}.csv"
 
@@ -28,29 +36,33 @@ def show_median_price_heatmap_per_region(region_price_path:Path, region_path:Pat
 
             processed_region_lf = (
                 region_lf.with_columns(pl.col("timestamp_utc").str.to_datetime("%Y-%m-%dT%H:%M:%S%.f%z"))
-                .filter(pl.col("timestamp_utc").dt.year() == year)
+                .filter(pl.col("timestamp_utc").dt.year() == year) #filter for selected year.
                 .with_columns(pl.col("timestamp_utc").dt.strftime("%Y-%m").alias("month"),
                             pl.lit(region).alias("region")
                         )
                 .group_by(["month", "region"])
-                .agg(pl.col(f"{fuel_type}_median").median().alias(f"{fuel_type}_median_price"))
+                .agg(pl.col(f"{fuel_type}_median").median().alias(f"{fuel_type}_median_price")) #calculate monthly median price.
             )
             global_lf_list.append(processed_region_lf)
         else: continue
 
+    #collect all lazyframes and concatenate to a dataframe.
     global_df = pl.concat(global_lf_list).collect()
 
+    #join prices with regions to get the coordinates for the respective median price.
     display_df = (global_df.join(df_regions, left_on = "region", right_on = "leit_plz", how = "left").sort("month"))
 
+    #get min and max price for an constant colorscale over the year.
     min_price = display_df[f"{fuel_type}_median_price"].min()
     max_price = display_df[f"{fuel_type}_median_price"].max()
 
+    #create scatterplot.
     fig = px.scatter_map(
         display_df,
         lat = "avg_lat",
         lon = "avg_lng",
         color = f"{fuel_type}_median_price",
-        center = {"lat": 51.16, "lon": 10.45},
+        center = {"lat": 51.16, "lon": 10.45}, #geographical centre of Germany.
         zoom = 4,
         map_style = "open-street-map",
         animation_frame = "month",
@@ -65,43 +77,50 @@ def show_median_price_heatmap_per_region(region_price_path:Path, region_path:Pat
     fig.update_traces(marker = dict(size = 15, opacity = 1))
     fig.show()
 
+#NOTE: parts of this function were written with the help of gemini.
 def get_borderregion_stations(station_input_path:Path, outputpath:Path):
+    '''
+    This function calculates for each stations the distance to Germanys borders and sorts them into border, surrounding and inland groups. Creates a Dataframe with the border and surrounding stations and their closest neighbouring country.
+    Safes the dataframe as csv to the selected output. Returns nothing.
+    i: Path station_input_path, Path outputpath
+    o: None
+    '''
 
     station_df = pd.read_csv(station_input_path, usecols=["uuid", "latitude", "longitude", "brand", "post_code"])
 
-    #convert coordinates into geodata to be able to calculate with distance in meter
+    #convert coordinates into geodata to be able to calculate with distance in meter.
     print("converting into geodata")
     station_geo_df = gpd.GeoDataFrame(station_df, 
                                       geometry = gpd.points_from_xy(station_df["longitude"], station_df["latitude"]),
                                       crs = "EPSG:4326")
-    station_geo_df = station_geo_df.to_crs(epsg = 32632) #projection into metric system
+    station_geo_df = station_geo_df.to_crs(epsg = 32632) #projection into metric system.
 
     neighbor_countries = ["Denmark", "Poland", "Czechia", "Austria", "Switzerland", 
         "France", "Luxembourg", "Belgium", "Netherlands"]
     
-    #loading the borders of neighbouring countries and calculating the distance from the stations
+    #loading the borders of neighbouring countries and calculating the distance from the stations.
     dist_cloumns =[]
 
     for country in neighbor_countries:
         print(f"loading border for {country} and calculating distance.")
 
-        #load country shape and convert coordinates to metrical system
+        #load country shape and convert coordinates to metrical system.
         country_geo_df = ox.geocode_to_gdf(country)
         country_geo_df = country_geo_df.to_crs(epsg = 32632)
         print(country_geo_df.head())
         geom = country_geo_df.geometry.iloc[0]
 
         col_name = f"dist_{country}"
-        station_geo_df[col_name] = station_geo_df.geometry.distance(geom) / 1000 #divide by 1000 to get kilometers
+        station_geo_df[col_name] = station_geo_df.geometry.distance(geom) / 1000 #divide by 1000 to get kilometers.
         dist_cloumns.append(col_name)
     
-    #get closest border for each statino and extract country name and minimum distance
+    #get closest border for each statino and extract country name and minimum distance.
     station_geo_df["closest_border_col"] = station_geo_df[dist_cloumns].idxmin(axis=1)
     station_geo_df["neighbour_country"] = station_geo_df["closest_border_col"].str.replace("dist_", "")
     station_geo_df["dist_km"] = station_geo_df[dist_cloumns].min(axis = 1)
 
-    #classify each station into either border, border surrounding region or far away (inland) (-> to avoid regional differences we ignore the latter)
-    #the distances where arbitarily chosen, maybe change them later
+    #classify each station into either border, border surrounding region or far away (inland) (-> to avoid regional differences we ignore the latter).
+    #the distances were arbitarily chosen, maybe change them later.
     def get_zone(dist):
         if dist <= 8:
             return "Border (0-8km)"
@@ -112,14 +131,14 @@ def get_borderregion_stations(station_input_path:Path, outputpath:Path):
 
     station_geo_df["border_region"] = station_geo_df["dist_km"].apply(get_zone)
 
-    #filter sea border to denmark and bodensee
+    #filter sea border to denmark and Bodensee.
     mask_dk = (station_geo_df["neighbour_country"] == "Denmark") & ((station_geo_df["longitude"] > 9.6) | (station_geo_df["longitude"] < 8.8))
     mask_bodensee = (station_geo_df["neighbour_country"].isin(["Switzerland", "Austria"])) & \
         (station_geo_df["latitude"] < 47.8) & (station_geo_df["longitude"] > 8.9) & (station_geo_df["longitude"] < 9.8)
     station_geo_df.loc[mask_dk | mask_bodensee, "border_region"] = "sea border (ignore)"
 
 
-    #filter to only keep border and surrounding stations & cleanup to save to csv
+    #filter to only keep border and surrounding stations & cleanup to save to csv.
     filter_stations_gdf = station_geo_df[station_geo_df["border_region"].isin(["Border (0-8km)", "Surrounding (8-25km)"])].copy()
     necessary_columns = ["uuid", "latitude", "longitude", "neighbour_country", "dist_km", "border_region", "brand"]
     export_df = pd.DataFrame(filter_stations_gdf[necessary_columns])
@@ -130,12 +149,19 @@ def get_borderregion_stations(station_input_path:Path, outputpath:Path):
     print(f"Done. File saved in {output_file}")
     print(f"number of found border and surrounding stations:: {len(export_df)}")
 
+#NOTE: parts of this function were written with the help of chatgpt.
 def mann_whitney_test_border_prices(median_price_path:Path,border_stations_file:Path,fuel_type:str):
+    '''
+    Performs a Mann-Whitney-U-Test that tests whether two independent samples (border stations and non-border stations) have the same distribution.
+    Returns two pandas DataFrames, one for the overall results and one for the separate yearly results.
+    i: Path median_price_path, Path border_stations_file, string fuel_type
+    o: pd.DataFrame overall_result_df, pd.DataFrame yearly_result_df
+    '''
 
     price_file = median_price_path / r'*/*.parquet'
     
 
-    #initialize lazyframes & preprocess
+    #initialize lazyframes & preprocess.
     
     border_lf = pl.scan_csv(border_stations_file).with_columns(pl.col("uuid").cast(pl.Utf8))
 
@@ -147,25 +173,24 @@ def mann_whitney_test_border_prices(median_price_path:Path,border_stations_file:
                             right_on = "uuid",               
                             how = "inner"))
     
-    # get df for yearly test
+    # get df for yearly test.
     yearly_lf = (preprocessed_lf.group_by(["year", "neighbour_country", "border_region", "station_uuid"])
                  .agg(pl.col(f"{fuel_type}_median").median().alias(f"{fuel_type}_median_price")))
     
-    # get df for overall test
+    # get df for overall test.
     overall_lf = (preprocessed_lf.group_by(["neighbour_country", "border_region", "station_uuid"])
                   .agg(pl.col(f"{fuel_type}_median").median().alias(f"{fuel_type}_median_price")))
     
-    # collect data
-    
+    # collect the data.
     yearly_df = yearly_lf.collect()
     overall_df = overall_lf.collect() 
 
-    # support function for the test
-    def calculate_test(df:pl.DataFrame,country:str):
+    # support function for the test.
+    def __calculate_test(df:pl.DataFrame,country:str):
         #filter for conutry
         df_country = df.filter(pl.col("neighbour_country") == country)
 
-        #get lists for border and surrounding region
+        #get lists for border and surrounding region.
         border_prices = (df_country.filter(pl.col("border_region") == "Border (0-8km)")
                         .get_column(f"{fuel_type}_median_price")
                         .cast(pl.Float64, strict = False)
@@ -179,14 +204,14 @@ def mann_whitney_test_border_prices(median_price_path:Path,border_stations_file:
                             .drop_nulls()
                             .to_list())
 
-        #check if we have enough stations for a test
+        #check if we have enough stations for a test.
         if len(border_prices) < 5 or len(surrounding_prices) < 5:
             return None
         
-        #two sided mann whitney u test (-> checks for differences on both sides)
-        stat, p_value = stats.mannwhitneyu(border_prices, surrounding_prices, alternative = "two-sided")
+        #two sided mann whitney u test (-> checks for differences on both sides).
+        _, p_value = stats.mannwhitneyu(border_prices, surrounding_prices, alternative = "two-sided")
 
-        #calculate median of both groups to see which one in cheaper
+        #calculate median of both groups to see which one in cheaper.
         median_border = pl.Series(border_prices).median()
         median_surrounding = pl.Series(surrounding_prices).median()
 
@@ -196,61 +221,63 @@ def mann_whitney_test_border_prices(median_price_path:Path,border_stations_file:
             "N_surrounding": len(surrounding_prices),
             "Median_border": round(median_border, 3),
             "Median_surrounding": round(median_surrounding, 3),
-            "Price_difference": round(median_border - median_surrounding, 3), #negative means that border stations are cheaper
+            "Price_difference": round(median_border - median_surrounding, 3), #negative means that border stations are cheaper.
             "p_value": p_value,
             "Significant (5%)": True if p_value < 0.05 else False
          }
     
-    #calculate the tests (yearly/overall) for each bordering country
+    #calculate the tests (yearly/overall) for each bordering country.
     countries = yearly_df["neighbour_country"].unique().to_list()
     overall_results = []
     yearly_results = []
 
-    #test over all the years
+    #test over all the years.
     for country in countries:
-        result = calculate_test(overall_df, country)
+        result = __calculate_test(overall_df, country)
         if result:
             overall_results.append(result)
     
-    #test over each year separatly
+    #test over each year separatly.
     years = yearly_df["year"].unique().to_list()
     for country in countries:
         for year in years:
             filtered_df_yearly = yearly_df.filter(pl.col("year") == year)
-            result = calculate_test(filtered_df_yearly, country)
+            result = __calculate_test(filtered_df_yearly, country)
             if result:
                 result["year"] = year
                 yearly_results.append(result)
 
-    #show results
+    #safe and return the results.
     overall_result_df = pd.DataFrame(overall_results)
     yearly_result_df = pd.DataFrame(yearly_results)
     
     yearly_result_df = yearly_result_df[["year", "Country", "Median_border", "Median_surrounding", 
                                          "Price_difference", "p_value", "Significant (5%)", "N_border", "N_surrounding"]]
     
-    print("=== absolute results (over all years) ===")
-    display(overall_result_df)
-
-    print("\n=== yearly result (excerpt) ===")
-    display(yearly_result_df.head(15))
+    return overall_result_df, yearly_result_df
 
 def get_autobahn_stations(station_input_path:Path,autobahn_output_path:Path):
+    '''
+    This functions filters manually for buzzwords that indicate whether a gas station is on the Autobahn. It saves the Autobahn stations dataframe as a csv to the given output path. Returns nothing.
+    i: Path station_input_path, Path autobahn_output_path
+    o: None
+    '''
 
     stations_df = pd.read_csv(station_input_path)
     
-    #filter the stations for buzzwords with regex
+    #filter the stations for buzzwords with regex.
     buzzword_pattern = r'(?i)(?:bab|raststätte|autobahn|rastanlage|rasthof|\bA\s?\d{1,3}\b)'
 
-    # create masks for name, street & house number (because for some entries, the autobahn was in the house_number column)
+    # create masks for name, street & house number (because for some entries, the autobahn was in the house_number column).
+    #this part was written with the help of gemini.
     mask_name = stations_df["name"].str.contains(buzzword_pattern, regex = True, na = False)
     mask_street = stations_df["street"].str.contains(buzzword_pattern, regex = True, na = False)
     mask_house_number = stations_df["house_number"].str.contains(buzzword_pattern, regex = True, na = False)
 
-    # combine for all, if buzzword is part of either of these columns
+    # combine for all, if buzzword is part of either of these columns.
     stations_df["is_autobahn"] = mask_house_number | mask_name | mask_street
     
-    #filter out non autobahn stations and export
+    #filter out non autobahn stations and export.
     stations_df = stations_df[stations_df["is_autobahn"] == True]
     export_df = stations_df[["uuid", "longitude", "latitude", "brand", "post_code"]]
     export_df.to_csv(autobahn_output_path / r'autobahn_stations.csv', index = False)
@@ -260,9 +287,15 @@ def get_autobahn_stations(station_input_path:Path,autobahn_output_path:Path):
     print(f"File was saved as {autobahn_output_path}/autobahn_stations.csv")
 
 def filter_autobahn_from_borders(border_file:Path,autobahn_file:Path,output_path:Path):
+    '''
+    This method removes all autbahn stations from the border region stations. The result is saved as a new dataframe as csv to the given outputpath. Returns nothing.
+    i: Path border_file, Path autobahn_file, Path output_path
+    o: None
+    '''
     autobahn_df = pl.read_csv(autobahn_file)
     border_df = pl.read_csv(border_file, schema_overrides={"post_code": pl.Utf8})
 
+    #with the anti-join, all stations that are in the autobahn stations df are getting removed from the border stations df.
     no_autobahn_border_df = (border_df.join(
         autobahn_df,
         on = "uuid",
@@ -271,12 +304,15 @@ def filter_autobahn_from_borders(border_file:Path,autobahn_file:Path,output_path
 
     no_autobahn_border_df.write_csv(output_path / "lower_non_autobahn_border_stations.csv")
 
-def show_border_price_difference(median_price_path:Path,border_stations_file:Path,fuel_type:str,country:str,year:int):
+def show_border_price_difference(median_price_path:Path,border_stations_file:Path,fuel_type:str,country:str):
+    '''
+    This function plots a boxplot with the distributions of the median fuel prices of a selected fuel type over time for a selected country. For each year a box for the border region stations and a box for the surrounding region stations is plottet. Returns nothing.
+    i: Path median_price_path, Path border_stations_file, string fuel_type, string country
+    o: None
+    '''
     price_file = median_price_path / r'*/*.parquet'
     
-
-    #initialize lazyframes & preprocess
-    
+    #initialize lazyframes & preprocess.
     border_lf = pl.scan_csv(border_stations_file).with_columns(pl.col("uuid").cast(pl.Utf8))
 
     price_lf = pl.scan_parquet(price_file).with_columns(pl.col("station_uuid").cast(pl.Utf8))
@@ -287,63 +323,61 @@ def show_border_price_difference(median_price_path:Path,border_stations_file:Pat
                             right_on = "uuid",               
                             how = "inner"))
     
-    # get df for yearly test
+    # get dataframe for yearly test.
     yearly_lf = (preprocessed_lf.group_by(["year", "neighbour_country", "border_region", "station_uuid"])
                  .agg(pl.col(f"{fuel_type}_median").median().alias(f"{fuel_type}_median_price")))
-    
-    # collect data
-    yearly_df = yearly_lf.collect()
 
-    #filter data for country and year
-    plot_df = (yearly_df.filter(
-        (pl.col("neighbour_country") == country) & 
-        (pl.col("year") == year) #&
-        #(pl.col(f"{fuel_type}_median_price"))
-        ).select(["border_region", f"{fuel_type}_median_price"])
+
+    #filter and collect data for country.
+    plot_df = (yearly_lf.filter(
+        (pl.col("neighbour_country") == country)
+        ).select(["border_region", f"{fuel_type}_median_price", "year"])
+        .collect()
         .to_pandas())
-    #check if data is available
+    plot_df["year"] = pd.to_datetime(plot_df["year"].astype(int).astype(str), format="%Y")
+    #check if data is available.
     if plot_df.empty:
-        print(f"no data found for {country} in {year}!")
+        print(f"no data found for {country}!")
         return
-    
-    #create graph
-    fig = px.histogram(
-        plot_df,
-        x = f"{fuel_type}_median_price",
-        color = "border_region",
-        barmode = "overlay",
-        histnorm = "probability",
-        marginal = "box",
-        nbins = 40,
-        color_discrete_map = {
-            "Border (0-8km)": "red",
-            "Surrounding (8-25km)": "blue"
-        },
-        title = f"{fuel_type} price distribution: Border vs. Surrounding region for {country} ({year})",
-        labels = {f"{fuel_type}_median_price": "daily median (€)", "border_region": "zone"}
-    )
 
-    fig.update_traces(opacity = 0.7)
-    fig.update_layout(template = "plotly_white",
-                      xaxis_title = "Price (€)",
-                      yaxis_title = "relative probality density",
-                      legend = dict(
-                          yanchor = "top",
-                          y = .99,
-                          xanchor = "right",
-                          x = .99
-                      )
-                    )
+    fig = go.Figure()
+
+    #the following part was written with the help of chatgpt.
+    #create subplot for border and surrounding regions.
+    for label, color in [("Border (0-8km)", "lightblue"), ("Surrounding (8-25km)", "violet")]:
+        df = plot_df[plot_df["border_region"] == label]
+
+        fig.add_trace(go.Box(
+            x = plot_df["year"],
+            y = df[f"{fuel_type}_median_price"],
+            name = label,
+            marker_color = color
+        ))
+    
+    fig.update_layout(
+        title = f"Yearly distribution of median {fuel_type} prices: border vs. surrounding-region stations ({country})",
+        xaxis_title = "Year",
+        yaxis_title = "Median price (€/liter)",
+        boxmode = "group"
+    )
+    fig.update_xaxes(tickformat="%Y", dtick="M12")
     
     fig.show()
     
+#NOTE: parts of this functions were written with the help of chatgpt.
 def perform_matched_panel_regression_autobahn_stations(median_price_path:Path,stations_file:Path,autobahn_file:Path,fuel_type:str,statistic:str="mean",return_residuals:bool=False):
+    '''
+    This method performs a panel regression that estimates the coefficient of the factor 'autobahn' on the price of a selected fuel type. It filters out the fixed effects of time and geographic proximity.
+    For a robustness check, it's also possible to select the price median as the statistic. If needed, the function also returns the residual errors.
+    i: Path median_price_path, Path stations_file, Path autobahn_file, string fuel_type, string statistic, bool return_residuals
+    o: pd.DataFrame summary_df, pd.DataFrame analysis_panel, (pd.DataFrame residuals_df)
+    '''
 
-    #define fixed parameters (for regional clustering, ...)
+    #define fixed parameters (for regional clustering, ...).
     K_MATCHES = 5
     MAX_DISTANCE = 50
     
-    # create stations and autobahn lf and merge them into a df, also classify the brand
+    # create stations and autobahn lf and merge them into a df, also classify the brand.
     stations_lf = (pl.scan_csv(stations_file).select(pl.col(["uuid", "brand", "latitude", "longitude"])))
     autobahn_lf = (pl.scan_csv(autobahn_file).select(pl.col(["uuid"])).with_columns(pl.lit(1).alias("autobahn")))
 
@@ -354,7 +388,7 @@ def perform_matched_panel_regression_autobahn_stations(median_price_path:Path,st
                 .filter(pl.col("longitude").is_not_null() & pl.col("latitude").is_not_null())
                 .collect())
     
-    # create a price df
+    # create a price df.
     price_files = median_price_path / r'*/*.parquet'
     price_panel_df = (pl.scan_parquet(price_files)
                         .select([pl.col("station_uuid").alias("uuid"),
@@ -364,7 +398,7 @@ def perform_matched_panel_regression_autobahn_stations(median_price_path:Path,st
                         .filter(pl.col("uuid").is_not_null() & pl.col("date").is_not_null())
                         .collect())
     
-    #build the panel for the analysis (combine the price and the stations dfs with the match map helper method)
+    #build the panel for the analysis (combine the price and the stations dfs with the match map helper method).
     match_map = __build_match_map(stations_panel_df, K_MATCHES, MAX_DISTANCE)
     analysis_panel = (match_map.join(stations_panel_df
                                      .select(["uuid", "brand", "brand_category", "latitude", "longitude"]),
@@ -378,7 +412,7 @@ def perform_matched_panel_regression_autobahn_stations(median_price_path:Path,st
                                     how = "inner")
                                 .filter(pl.col("date").is_not_null()))
     
-    # perform the panel regression 
+    # perform the panel regression.
     outcome_col = f"{fuel_type}_{statistic}"
 
     panel_regression_df = (analysis_panel.select(["station_uuid","match_set_uuid", "date", "autobahn", "brand_category", pl.col(outcome_col).alias("y")])
@@ -387,25 +421,25 @@ def perform_matched_panel_regression_autobahn_stations(median_price_path:Path,st
     panel_regression_df["date"] = pd.to_datetime(panel_regression_df["date"])
     panel_regression_df["year"] = panel_regression_df["date"].dt.year
 
-    #iterate over the years
+    #iterate over the years.
     summary_rows = []
     residual_dfs = []
 
     for year in sorted(panel_regression_df["year"].dropna().unique()):
         year_df = panel_regression_df[panel_regression_df["year"] == year].copy()
 
-        #define exogene variables (-> also get dummies to the brand categories)
+        #define exogene variables (-> also get dummies to the brand categories).
         exog = pd.DataFrame({"autobahn": year_df["autobahn"].astype(float)})
         brand_dummies = pd.get_dummies(year_df["brand_category"], prefix = "brand", drop_first = True, dtype = float)
         exog = pd.concat([exog, brand_dummies], axis = 1)
 
-        #define fixed effect that the modell needs to consider (regional and time fixed)
+        #define fixed effect that the modell needs to consider (regional and time fixed).
         absorb = pd.DataFrame({"match_set_uuid": pd.Categorical(year_df["match_set_uuid"]), "date": pd.Categorical(year_df["date"])})
 
-        #define clustered standard error (treat the errors from one station over time as one cluster -> these errors are not independent from each other)
+        #define clustered standard error (treat the errors from one station over time as one cluster -> these errors are not independent from each other).
         clusters = pd.Categorical(year_df["station_uuid"]).codes.reshape(-1,1)
 
-        #define the model (we use abosrbingls)
+        #define the model (we use abosrbingls).
         model = AbsorbingLS(dependent = year_df["y"].astype(float),
                             exog = exog,
                             absorb = absorb,
@@ -414,7 +448,7 @@ def perform_matched_panel_regression_autobahn_stations(median_price_path:Path,st
                         clusters = clusters,
                         debiased = True)
         
-        #calc a confidence intervall for each result
+        #calc a confidence intervall for each result.
         ci = result.conf_int()
         summary_rows.append({
                 "year": year,
@@ -428,7 +462,7 @@ def perform_matched_panel_regression_autobahn_stations(median_price_path:Path,st
                 "n_observed": int(result.nobs)
             })
         
-        #safe residual error dfs for wilcoxon test
+        #safe residual error dfs for wilcoxon test later on.
         if return_residuals:
             year_df["residuals"] = np.asarray(result.resids).reshape(-1)
             residual_dfs.append(year_df[["station_uuid", "match_set_uuid", "date", "year", "autobahn", "residuals"]])
@@ -442,12 +476,18 @@ def perform_matched_panel_regression_autobahn_stations(median_price_path:Path,st
     return summary_df, analysis_panel
 
 def plot_yearly_autobahn_premium_line(yearly_df:pd.DataFrame,statistic:str="mean"):
+    '''
+    This method plots a line of the autobahn premium for a selected fuel type with surrounding confidence intervall over the years. Returns nothing.
+    i: pd.DataFrame yearly_df, string statistic
+    '''
 
+    #filter for selected statistic and format year column.
     yearly_df = yearly_df[yearly_df["statistic"] == statistic]
     yearly_df["year"] = pd.to_datetime(yearly_df["year"].astype(int).astype(str), format="%Y")
 
     fig = go.Figure()
 
+    #define fuel types and color maps for each fuel type.
     fuel_types = ["diesel", "e5", "e10"]
 
     fill_color_map = {
@@ -467,10 +507,12 @@ def plot_yearly_autobahn_premium_line(yearly_df:pd.DataFrame,statistic:str="mean
         "e10": "rgb(231,107,243)"
     }
 
-
+    #iterate over the fuel types.
     for i, fuel in enumerate(fuel_types):
         df_sub = yearly_df[yearly_df["fuel_type"] == fuel].sort_values("year")
 
+        #format the x and y values into desired format.
+        #this part was written with the help of chatgpt.
         x_vals = df_sub["year"].to_list()
         x_rev = x_vals[::-1]
 
@@ -479,6 +521,7 @@ def plot_yearly_autobahn_premium_line(yearly_df:pd.DataFrame,statistic:str="mean
 
         y_line = df_sub["autobahn_coef"].to_list()
 
+        #create custom data for the hoverinfo.
         custom_data = list(zip(
             df_sub["year"].dt.year,
             df_sub["autobahn_coef"],
@@ -486,7 +529,7 @@ def plot_yearly_autobahn_premium_line(yearly_df:pd.DataFrame,statistic:str="mean
             df_sub["ci_low"]
         ))
  
-        #plot confidence intervalls
+        #plot confidence intervalls.
         fig.add_trace(go.Scatter(
             x = x_vals + x_rev,
             y = y_upper + y_lower,
@@ -499,7 +542,7 @@ def plot_yearly_autobahn_premium_line(yearly_df:pd.DataFrame,statistic:str="mean
             hoverinfo = "skip"
             ))
         
-        #plot autobahn premium line
+        #plot autobahn premium line.
         fig.add_trace(go.Scatter(
             x = x_vals,
             y = y_line,
@@ -520,6 +563,7 @@ def plot_yearly_autobahn_premium_line(yearly_df:pd.DataFrame,statistic:str="mean
         ))
         
 
+    #create dropdown to choose with fuel type to display.
     buttons = []
     for i, fuel in enumerate(fuel_types):
         visible = [False] * (2 * len(fuel_types))
@@ -552,84 +596,68 @@ def plot_yearly_autobahn_premium_line(yearly_df:pd.DataFrame,statistic:str="mean
         
     )
     fig.update_xaxes(tickformat="%Y", dtick="M12")
-    save_png(fig, Path(r'rq3_premium_line.png'))
-    fig.show()
-
-#dont use
-def plot_autobahn_premium_histogram(yearly_df:pd.DataFrame):
-    fig = px.histogram(
-        yearly_df,
-        x = "autobahn_coef",
-        color = "fuel_type",
-        barmode = "overlay",
-        nbins = 15,
-        title = "distribution of the yearly autobahn premium"
-    )
-    fig.update_layout(
-        xaxis_title = "estimated autobahn premium (€/liter)",
-        yaxis_title = "count",
-        template = "plotly_white"
-    )
-    fig.show()
-#dont use
-def plot_autobahn_premium_boxplot(yearly_df:pd.DataFrame):
-    fig = px.box(
-        yearly_df,
-        x = "fuel_type",
-        y = "autobahn_coef",
-        color = "fuel_type",
-        points = "all",
-        title = "yearly autobahn premium by fuel type"
-    )
-    fig.update_layout(
-        xaxis_title = "fuel type",
-        yaxis_title = "estimated autobahn premium (€/liter)",
-        template = "plotly_white",
-        showlegend = False
-    )
+    save_png(fig, Path(r'rq3_premium_line.png')) #saves plot as png.
     fig.show()
 
 def plot_autobahn_premium_barchart(yearly_df:pd.DataFrame,statistic:str="mean"):
 
-    years = sorted(yearly_df["year"].unique())
     yearly_df = yearly_df[yearly_df["statistic"] == statistic]
     yearly_df["year"] = pd.to_datetime(yearly_df["year"].astype(int).astype(str), format="%Y")
 
     fig= go.Figure()
 
     color_map = {
-        "diesel": "royalblue",
-        "e5": "tomato",
-        "e10": "mediumseagreen"
+         "diesel": "rgb(0,176,246)",
+        "e5": "rgb(0,100,80)",
+        "e10": "rgb(231,107,243)"
     }
     y_diesel = yearly_df[yearly_df["fuel_type"] == "diesel"]
     y_e5 = yearly_df[yearly_df["fuel_type"] == "e5"]
     y_e10 = yearly_df[yearly_df["fuel_type"] == "e10"]
 
+
+
     fig.add_trace(go.Bar(
         x = yearly_df["year"].dt.year,
         y = y_diesel["autobahn_coef"],
         name = "diesel",
-        marker_color = color_map["diesel"]
-
+        marker_color = color_map["diesel"],
+        hovertemplate=(
+                "Year: %{x}<br>"
+                "Fuel: diesel<br>"
+                "Autobahn premium: %{y:.3f} €/liter<br>"
+                "<extra></extra>"
+            )
     ))
     fig.add_trace(go.Bar(
         x = yearly_df["year"].dt.year,
         y = y_e5["autobahn_coef"],
         name = "e5",
-        marker_color = color_map["e5"]
+        marker_color = color_map["e5"],
+        hovertemplate=(
+                "Year: %{x}<br>"
+                "Fuel: e5<br>"
+                "Autobahn premium: %{y:.3f} €/liter<br>"
+                "<extra></extra>"
+            )
 
     ))
     fig.add_trace(go.Bar(
         x = yearly_df["year"].dt.year,
         y = y_e10["autobahn_coef"],
         name = "e10",
-        marker_color = color_map["e10"]
+        marker_color = color_map["e10"],
+        hovertemplate=(
+                "Year: %{x}<br>"
+                "Fuel: e10<br>"
+                "Autobahn premium: %{y:.3f} €/liter<br>"
+                "<extra></extra>"
+            )
 
     ))
 
     fig.update_layout(
-        title = dict(text = "Development of the autobahn premium from 2024-2026"),
+        title = dict(text = "Development of the autobahn premium from 2014-2026"),
         xaxis_tickfont_size = 14,
         yaxis = dict(
             title = dict(
@@ -718,6 +746,7 @@ def plot_station_price_map(analyses_panel:pl.DataFrame,fuel_type:str,statistic="
 
     fig.show()
 
+#NOTE: parts of this function were written with the help of chatgpt.
 def perform_wilcoxon_variance_test_on_autobahn(residuals_df:pd.DataFrame,measure:str="mad",min_station_observations:int=30):
     
     #check if meassure is valid
@@ -791,6 +820,70 @@ def perform_wilcoxon_variance_test_on_autobahn(residuals_df:pd.DataFrame,measure
             })
     
     return pd.DataFrame(results)
+
+def plot_wilcoxon_results_loolipop(wilcoxon_df:pd.DataFrame):
+    '''
+    Plots a horizontal lollipop plot for the median volatility difference of autobahn station prices and non autobahn station prices. The difference is positive, when the autobahn volatility is higher than the non autobahn volatility. Returns nothing.
+    i: pd.Dataframe wilcoxon_df
+    o: None
+    '''
+
+    # Build one single trace for all stems using None separators
+    #this part was written with the help of chatgpt.
+    x_stems = []
+    y_stems = []
+    wilcoxon_df["year"] = pd.to_datetime(wilcoxon_df["year"].astype(int).astype(str), format="%Y")
+
+    for _, row in wilcoxon_df.iterrows():
+        x_stems.extend([row["year"], row["year"], None])
+        y_stems.extend([0, row["median_difference"], None])
+
+    fig = go.Figure()
+
+    # Stems
+    fig.add_trace(
+        go.Scatter(
+            x=x_stems,
+            y=y_stems,
+            mode="lines",
+            line=dict(width=2),
+            showlegend=False,
+            hoverinfo="skip"
+        )
+    )
+
+    custom_data = list(zip(
+        wilcoxon_df["year"].dt.year,
+        wilcoxon_df["median_difference"]
+    ))
+
+    # Lollipop heads
+    fig.add_trace(
+        go.Scatter(
+            x=wilcoxon_df["year"],
+            y=wilcoxon_df["median_difference"],
+            mode="markers",
+            marker=dict(size=12),
+            name="median volatility difference",
+            customdata=custom_data,
+            hovertemplate=(
+                "Year: %{customdata[0]}<br>"
+                "Median volatility difference: %{customdata[1]:.4f} €/liter<br>"
+                "<extra></extra>"
+            )
+
+        )
+    )
+
+    fig.update_layout(
+        title="Autobahn vs non autobahn stations median volatility difference over the years",
+        xaxis_title="year",
+        yaxis_title="median difference (€/liter)",
+        template="plotly_white"
+    )
+    fig.update_xaxes(tickformat="%Y", dtick="M12")
+
+    fig.show()
 
 
 #---- helper methods ----
