@@ -216,7 +216,7 @@ def tank_time_analysis_dashboard(
             month_files[month_key] = f
 
     if not month_files:
-        raise FileNotFoundError(f"Keine passenden Dateien in {data_dir} gefunden.")
+        raise FileNotFoundError(f"Found no matching data files in {data_dir}.")
 
     month_keys = sorted(month_files.keys())
 
@@ -226,7 +226,7 @@ def tank_time_analysis_dashboard(
     month_slider = widgets.SelectionRangeSlider(
         options=month_keys,
         index=(0, len(month_keys) - 1),
-        description="Zeitraum",
+        description="Time Range",
         layout=widgets.Layout(width="900px"),
         continuous_update=False,
     )
@@ -240,33 +240,33 @@ def tank_time_analysis_dashboard(
     stat_dropdown = widgets.Dropdown(
         options=[("Mean", "mean"), ("Median", "median")],
         value="mean",
-        description="Maß",
+        description="Statistic",
     )
 
     city_text = widgets.Text(
         value="",
         description="City",
-        placeholder="z. B. Hamburg",
+        placeholder="eg. Hamburg",
     )
 
     brand_text = widgets.Text(
         value="",
         description="Brand",
-        placeholder="z. B. ARAL",
+        placeholder="eg. ARAL",
     )
 
     plz_text = widgets.Text(
         value="",
         description="PLZ",
-        placeholder="z. B. 24",
+        placeholder="eg. 24",
     )
 
     output = widgets.Output()
 
-    weekday_labels = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+    weekday_labels = ["Mon.", "Tue.", "Wed.", "Thu.", "Fri.", "Sat.", "Sun."]
 
     # ------------------------------------------------------------
-    # 3) Zeitraum laden
+    # load time period
     # ------------------------------------------------------------
     def load_period(start_month: str, end_month: str) -> pl.DataFrame:
         selected_months = [m for m in month_keys if start_month <= m <= end_month]
@@ -280,7 +280,7 @@ def tank_time_analysis_dashboard(
         return lf.collect(engine="streaming")
 
     # ------------------------------------------------------------
-    # 4) Filter anwenden
+    # 4) apply filters
     # ------------------------------------------------------------
     def apply_filters(
         df: pl.DataFrame,
@@ -318,10 +318,9 @@ def tank_time_analysis_dashboard(
         return out
 
     # ------------------------------------------------------------
-    # 5) Analyse vorbereiten
+    # 5) prepare analysis
     # ------------------------------------------------------------
     def prepare_analysis(df: pl.DataFrame) -> pl.DataFrame:
-        # Tagesminimum je Tankstelle, Kraftstoff, Tag
         df = df.with_columns(
             pl.col("price")
             .min()
@@ -342,7 +341,7 @@ def tank_time_analysis_dashboard(
         return df
 
     # ------------------------------------------------------------
-    # 6) Text erzeugen
+    # 6) Produce summary text
     # ------------------------------------------------------------
     def build_summary_text(
         df: pl.DataFrame,
@@ -374,9 +373,6 @@ def tank_time_analysis_dashboard(
         evening_ct = float(evening.select(pl.mean("diff_to_min")).item()) * 100
         morning_ct = float(morning.select(pl.mean("diff_to_min")).item()) * 100
         diff_ct = morning_ct - evening_ct
-
-        # Bestes 4-Stunden-Abendfenster optional sauberer bestimmen
-        # Hier zusätzlich: bestes 2h / 3h / 4h Fenster aus allen Stunden
         window_results = []
         hour_map = {row["hour"]: row["mean_diff"] for row in hour_stats.to_dicts()}
 
@@ -395,14 +391,14 @@ def tank_time_analysis_dashboard(
         best_window = min(window_results, key=lambda x: x["avg_diff"])
         best_window_ct = best_window["avg_diff"] * 100
 
-        # Filterbeschreibung
+        # Description of applied filters
         filters = [fuel_type]
         if city.strip():
-            filters.append(f"Stadt enthält '{city.strip()}'")
+            filters.append(f"city contains '{city.strip()}'")
         if brand.strip():
-            filters.append(f"Marke enthält '{brand.strip()}'")
+            filters.append(f"brand contains '{brand.strip()}'")
         if plz_prefix.strip():
-            filters.append(f"PLZ beginnt mit '{plz_prefix.strip()}'")
+            filters.append(f"postcode starts with '{plz_prefix.strip()}'")
 
         filter_text = ", ".join(filters)
 
@@ -411,18 +407,18 @@ def tank_time_analysis_dashboard(
         n_stations = df.select(pl.col("station_id").n_unique()).item()
 
         return (
-            f"**Zeitraum:** {start_month} bis {end_month}  \n"
-            f"**Filter:** {filter_text}  \n"
-            f"**Beobachtungen:** {n_obs:,} Preisbeobachtungen aus {n_stations:,} Tankstellen  \n\n"
-            f"Im Zeitraum **{start_month} bis {end_month}** liegen die Preise für **{fuel_type}** "
-            f"zwischen **18–21 Uhr** im Schnitt **{evening_ct:.2f} ct/L über dem Tagesminimum**, "
-            f"morgens zwischen **6–9 Uhr** dagegen **{morning_ct:.2f} ct/L**. "
-            f"Das Abendtanken ist damit im Mittel um **{diff_ct:.2f} ct/L** günstiger.  \n\n"
-            f"Die statistisch beste Einzelstunde ist **{best_hour}:00 Uhr**. "
-            f"Zu dieser Stunde liegt der Preis im Schnitt nur **{best_hour_ct:.2f} ct/L über dem Tagesminimum**, "
-            f"und die Wahrscheinlichkeit, genau das Tagesminimum zu treffen, beträgt **{best_prob:.1f} %**.  \n\n"
-            f"Das beste zusammenhängende Zeitfenster ist **{best_window['start']}:00–{best_window['end']}:59 Uhr** "
-            f"mit durchschnittlich **{best_window_ct:.2f} ct/L über dem Tagesminimum**."
+            f"**Time period:** {start_month} to {end_month}  \n"
+            f"**Filters:** {filter_text}  \n"
+            f"**Observations:** {n_obs:,} price observations from {n_stations:,} stations  \n\n"
+            f"During **{start_month} to {end_month}** for **{fuel_type}**, "
+            f"the average price between **18–21h** is **{evening_ct:.2f} ct/L above the daily minimum**, "
+            f"and between **6–9h** it is **{morning_ct:.2f} ct/L**. "
+            f"Evening refueling is therefore on average **{diff_ct:.2f} ct/L** cheaper.  \n\n"
+            f"The best single hour is **{best_hour}:00h**. "
+            f"At this hour the price is on average only **{best_hour_ct:.2f} ct/L above the daily minimum**, "
+            f"and the probability of hitting the exact daily minimum is **{best_prob:.1f} %**.  \n\n"
+            f"The best contiguous window is **{best_window['start']}:00–{best_window['end']}:59h** "
+            f"with average **{best_window_ct:.2f} ct/L above the daily minimum**."
         )
 
     # ------------------------------------------------------------
@@ -447,13 +443,13 @@ def tank_time_analysis_dashboard(
                 x=hour_stats["hour"].to_list(),
                 y=(hour_stats[value_col] * 100).to_list(),
                 mode="lines+markers",
-                name="ct/L über Tagesminimum",
+                name="ct/L above daily minimum",
             )
         )
         fig.update_layout(
-            title=f"Durchschnittliche Preisnähe zum Tagesminimum nach Stunde{title_suffix}",
-            xaxis_title="Stunde",
-            yaxis_title="ct/L über Tagesminimum",
+            title=f"Average distance to daily minimum by hour{title_suffix}",
+            xaxis_title="Hour",
+            yaxis_title="ct/L above daily minimum",
             height=450,
         )
         return fig
@@ -489,13 +485,13 @@ def tank_time_analysis_dashboard(
                 z=z,
                 x=x,
                 y=y,
-                colorbar=dict(title="ct/L über Tagesminimum"),
+                colorbar=dict(title="ct/L above daily minimum"),
             )
         )
         fig.update_layout(
-            title=f"Heatmap: Wochentag × Stunde{title_suffix}",
-            xaxis_title="Stunde",
-            yaxis_title="Wochentag",
+            title=f"Heatmap: Weekday × Hour{title_suffix}",
+            xaxis_title="Hour",
+            yaxis_title="Weekday",
             height=500,
         )
         return fig
@@ -517,13 +513,13 @@ def tank_time_analysis_dashboard(
             df = load_period(start_month, end_month)
 
             if df.is_empty():
-                print("Keine Daten gefunden.")
+                print("No data found.")
                 return
 
             df = apply_filters(df, fuel_type, city, brand, plz_prefix)
 
             if df.is_empty():
-                print("Keine Daten nach Anwendung der Filter.")
+                print("No data after applying filters.")
                 return
 
             df = prepare_analysis(df)
