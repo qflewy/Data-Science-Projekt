@@ -2,6 +2,7 @@ import polars as pl
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from pathlib import Path
 
 fuel_labels = {"diesel_mean": "Diesel", "e5_mean": "E5", "e10_mean": "E10"}
 _FUEL_COLS = ["diesel_mean", "e5_mean", "e10_mean"]
@@ -153,4 +154,44 @@ def plot_avg_premium_per_brand(df_per_brand, free, fuel="e10_mean"):
         yaxis=dict(rangemode="normal"),
     )
     fig.add_hline(y=0, line_color="black", line_width=1)
+    save_png(fig, "rq4_brand_price_premium.png")
     fig.show()
+    return fig
+
+def save_png(fig, img_name:Path, legend:bool=False):
+
+    px_w = 3300
+    px_h = 1650
+
+    fig = fig.full_figure_for_development(warn = False)
+    fig.update_layout(
+        autosize = False,
+        width = px_w,
+        height = px_h,
+        font = dict(size=44),
+        title = dict(font = dict(size=50),
+                     y = .98,
+                     x = .5,
+                     xanchor = "center",
+                     yanchor = "top")
+    )
+    if legend:
+        fig.update_layout(
+            legend=dict(
+                orientation="h",
+                yanchor="top",
+                font = dict(size = 38),
+                y= .92,
+                xanchor="left",
+                x=0
+            )
+        )
+
+    fig.update_xaxes(tickfont = dict(size = 38), title_font = dict(size = 40))
+    fig.update_yaxes(tickfont = dict(size = 38), title_font = dict(size = 40))
+
+    img_path = Path(r'D:/Tankdaten/rq_brand_vs_free')
+    fig.write_image(img_path/img_name,
+                    width=px_w,
+                    height=px_h,
+                    scale=1)
