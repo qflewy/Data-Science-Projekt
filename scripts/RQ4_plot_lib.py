@@ -152,9 +152,9 @@ def plot_avg_premium_per_brand(df_per_brand, free, fuel="e10_mean"):
         height=500,
         width=1100,
         yaxis=dict(rangemode="normal"),
+        template="plotly_white"
     )
     fig.add_hline(y=0, line_color="black", line_width=1)
-    save_png(fig, "rq4_brand_price_premium.png")
     fig.show()
     return fig
 
@@ -169,6 +169,8 @@ def save_png(fig, img_name:Path, legend:bool=False):
         width = px_w,
         height = px_h,
         font = dict(size=44),
+        paper_bgcolor = "white",
+        plot_bgcolor = "white",
         title = dict(font = dict(size=50),
                      y = .98,
                      x = .5,
