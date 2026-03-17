@@ -953,7 +953,7 @@ def save_png(fig, img_name:Path, legend:bool=False):
     o: None
     '''
 
-    px_w = 3000
+    px_w = 4200
     px_h = 2250
 
     fig = fig.full_figure_for_development(warn = False)
@@ -974,10 +974,11 @@ def save_png(fig, img_name:Path, legend:bool=False):
                 orientation="h",
                 yanchor="top",
                 font = dict(size = 38),
-                y= .92,
-                xanchor="left",
+                y= .94,
+                xanchor="right",
                 x=0
-            )
+            ),
+            #legend_title = None
         )
 
     fig.update_xaxes(tickfont = dict(size = 38), title_font = dict(size = 40))
