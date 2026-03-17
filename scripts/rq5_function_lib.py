@@ -69,6 +69,44 @@ def total_updates(prices_path: Path, start_year: int, end_year: int) -> pl.DataF
         "anomalies": [anomaly_counts.get(k, 0) for k in update_counts],
     })
 
+def save_png(fig, img_name:Path, legend:bool=False):
+
+    px_w = 3300
+    px_h = 1650
+
+    fig = fig.full_figure_for_development(warn = False)
+    fig.update_layout(
+        autosize = False,
+        width = px_w,
+        height = px_h,
+        font = dict(size=44),
+        title = dict(font = dict(size=50),
+                     y = .98,
+                     x = .5,
+                     xanchor = "center",
+                     yanchor = "top")
+    )
+    if legend:
+        fig.update_layout(
+            legend=dict(
+                orientation="h",
+                yanchor="top",
+                font = dict(size = 38),
+                y= .92,
+                xanchor="left",
+                x=0
+            )
+        )
+
+    fig.update_xaxes(tickfont = dict(size = 38), title_font = dict(size = 40))
+    fig.update_yaxes(tickfont = dict(size = 38), title_font = dict(size = 40))
+
+    img_path = Path(r'D:/Tankdaten/rq_brand_vs_free')
+    fig.write_image(img_path/img_name,
+                    width=px_w,
+                    height=px_h,
+                    scale=1)
+    
 def anomaly_rate(updates: pl.DataFrame) -> pl.DataFrame:
     """
     Compute anomaly rate per station.
@@ -135,9 +173,9 @@ def plot_anomaly_rate(combined: pl.DataFrame, parquet_base: Path, start_year: in
         yaxis_title="Anomaly Rate (%)",
         hovermode="x unified",
         xaxis=dict(tickformat="%Y-%m", tickangle=45),
+        template="plotly_white"
     )
     return fig
-
 
 def plot_anomalies_per_year(combined: pl.DataFrame, start_year: int, end_year: int) -> go.Figure:
     """
