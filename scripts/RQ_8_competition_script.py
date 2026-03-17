@@ -42,11 +42,10 @@ def performDBSCAN(data, eps, min_samples):
 
 def plotClusters(data, labels):
 
-    # Clusterlabels zum DataFrame hinzufügen
+
     data = data.with_columns(pl.Series("cluster", labels))
     pdf = data.to_pandas()
 
-    # distinguish between noise (-1) and points in a cluster
     pdf["status"] = np.where(pdf["cluster"] == -1, "noise", "clustered")
 
     fig = px.scatter_mapbox(
@@ -61,7 +60,26 @@ def plotClusters(data, labels):
         height=700
     )
 
-    fig.update_layout(mapbox_style="open-street-map")
+    fig.update_layout(
+    mapbox=dict(
+        style="carto-positron",
+        center=dict(lat=51.1657, lon=10.4515),
+        zoom=5.4,
+        bounds=dict(
+            west=5.5,
+            east=15.5,
+            south=47.0,
+            north=55.2
+        )
+    ),
+    margin=dict(l=0, r=0, t=0, b=0),
+    width=900,
+    height=1200
+    )
+
+    #only used to save the plots:
+    #fig.update_traces(marker=dict(size=20))
+
     return fig
 
 
@@ -489,8 +507,8 @@ def plot_yearly_boxplot(diff_df, cluster_name, fuel):
 
 def save_png(fig, img_name:Path, legend:bool=False):
 
-    px_w = 3000
-    px_h = 2250
+    px_w = 2200
+    px_h = 3000
 
     fig = fig.full_figure_for_development(warn = False)
     fig.update_layout(
