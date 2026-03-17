@@ -172,7 +172,7 @@ def plot_cluster_prices(
             pl.col(median_col).mean().alias("median_price")
         ])
         .sort("day")
-        .collect()
+        .collect(streaming = True)
     )
 
     pdf = result.to_pandas()
@@ -275,7 +275,7 @@ def plot_cluster_difference(
     grouped = df.group_by(["day", "group"]).agg([
         pl.col(mean_col).mean().alias("mean_price"),
         pl.col(median_col).mean().alias("median_price")
-    ]).sort("day").collect()
+    ]).sort("day").collect(streaming = True)
 
     pdf = grouped.to_pandas()
     pdf["day"] = pd.to_datetime(pdf["day"])
@@ -321,40 +321,37 @@ def plot_cluster_difference(
 
 
 def compute_cluster_counts_over_time(daily_prices, cluster_csv):
-    """
-    Berechnet pro Tag die Anzahl geclusterter und ungeclusterter Stationen 
-    sowie den Anteil geclustert.
-    """
-    # Cluster-Labels laden
-    clusters = pl.read_csv(cluster_csv).rename({"cluster": "cluster_label"})
 
-    # Join auf daily_prices
+    if isinstance(daily_prices, pl.DataFrame):
+        daily_prices = daily_prices.lazy()
+
+    clusters = pl.scan_csv(cluster_csv).rename({"cluster": "cluster_label"})
+
     df = daily_prices.join(
         clusters,
         left_on="station_uuid",
         right_on="uuid",
         how="left"
-    )
-
-    # Gruppe: cluster vs noise
-    df = df.with_columns(
+    ).with_columns(
         pl.when(pl.col("cluster_label") == -1)
         .then(pl.lit("noise"))
         .otherwise(pl.lit("cluster"))
         .alias("group")
     )
 
-    # Tages-Counts berechnen
     counts = (
         df.group_by(["day", "group"])
-          .agg(pl.count().alias("count"))
-          .pivot(values="count", index="day", columns="group")
-          .fill_null(0)
-          .with_columns(
-              (pl.col("cluster") + pl.col("noise")).alias("total_count"),
-              (pl.col("cluster") / (pl.col("cluster") + pl.col("noise"))).alias("cluster_share")
-          )
-          .sort("day")
+        .agg(pl.len().alias("count")) 
+        .collect(streaming=True) 
+        .pivot(on="group", index="day", values="count")
+        .fill_null(0)
+        .with_columns([
+            (pl.col("cluster") + pl.col("noise")).alias("total_count"),
+        ])
+        .with_columns([
+            (pl.col("cluster") / pl.col("total_count")).alias("cluster_share")
+        ])
+        .sort("day")
     )
 
     return counts
