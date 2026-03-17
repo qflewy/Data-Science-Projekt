@@ -77,8 +77,8 @@ def plotClusters(data, labels):
     height=1200
     )
 
-    #only used to save the plots:
-    #fig.update_traces(marker=dict(size=20))
+    # only used to save the plots:
+    # fig.update_traces(marker=dict(size=20))
 
     return fig
 
