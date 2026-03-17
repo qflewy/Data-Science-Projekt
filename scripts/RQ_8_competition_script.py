@@ -1,6 +1,6 @@
 # Debugged with the help of CoPilot
 
-from matplotlib.path import Path
+from pathlib import Path
 import numpy as np
 from sklearn.cluster import DBSCAN
 import polars as pl
@@ -518,9 +518,13 @@ def save_png(fig, img_name:Path, legend:bool=False):
 
     fig.update_xaxes(tickfont = dict(size = 38), title_font = dict(size = 40))
     fig.update_yaxes(tickfont = dict(size = 38), title_font = dict(size = 40))
-
     img_path = Path(r'C:\Users\Bjarne\Desktop\Uni\Data Science Projekt\images_for_poster')
-    fig.write_image(img_path/img_name,
+    
+    # Wir extrahieren nur den Dateinamen (.name), um doppelten Pfad-Salat zu vermeiden
+    # Und wir konvertieren das gesamte Path-Objekt am Ende in einen String
+    final_file = img_path / Path(img_name).name
+    
+    fig.write_image(str(final_file),
                     width=px_w,
                     height=px_h,
                     scale=1)
