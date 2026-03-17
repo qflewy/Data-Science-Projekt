@@ -1,5 +1,6 @@
 # Debugged with the help of CoPilot
 
+from pathlib import Path
 import numpy as np
 from sklearn.cluster import DBSCAN
 import polars as pl
@@ -41,11 +42,10 @@ def performDBSCAN(data, eps, min_samples):
 
 def plotClusters(data, labels):
 
-    # Clusterlabels zum DataFrame hinzufügen
+
     data = data.with_columns(pl.Series("cluster", labels))
     pdf = data.to_pandas()
 
-    # distinguish between noise (-1) and points in a cluster
     pdf["status"] = np.where(pdf["cluster"] == -1, "noise", "clustered")
 
     fig = px.scatter_mapbox(
@@ -60,7 +60,26 @@ def plotClusters(data, labels):
         height=700
     )
 
-    fig.update_layout(mapbox_style="open-street-map")
+    fig.update_layout(
+    mapbox=dict(
+        style="carto-positron",
+        center=dict(lat=51.1657, lon=10.4515),
+        zoom=5.4,
+        bounds=dict(
+            west=5.5,
+            east=15.5,
+            south=47.0,
+            north=55.2
+        )
+    ),
+    margin=dict(l=0, r=0, t=0, b=0),
+    width=900,
+    height=1200
+    )
+
+    # only used to save the plots:
+    # fig.update_traces(marker=dict(size=20))
+
     return fig
 
 
@@ -484,3 +503,46 @@ def plot_yearly_boxplot(diff_df, cluster_name, fuel):
     )
 
     return fig
+
+
+def save_png(fig, img_name:Path, legend:bool=False):
+
+    px_w = 2200
+    px_h = 3000
+
+    fig = fig.full_figure_for_development(warn = False)
+    fig.update_layout(
+        autosize = False,
+        width = px_w/2,
+        height = px_h,
+        font = dict(size=44),
+        title = dict(font = dict(size =50),
+                     y = .98,
+                     x = .5,
+                     xanchor = "center",
+                     yanchor = "top")
+    )
+    if legend:
+        fig.update_layout(
+            legend=dict(
+                orientation="h",
+                yanchor="top",
+                font = dict(size = 38),
+                y= .92,
+                xanchor="left",
+                x=0
+            )
+        )
+
+    fig.update_xaxes(tickfont = dict(size = 38), title_font = dict(size = 40))
+    fig.update_yaxes(tickfont = dict(size = 38), title_font = dict(size = 40))
+    img_path = Path(r'C:\Users\Bjarne\Desktop\Uni\Data Science Projekt\images_for_poster')
+    
+    # Wir extrahieren nur den Dateinamen (.name), um doppelten Pfad-Salat zu vermeiden
+    # Und wir konvertieren das gesamte Path-Objekt am Ende in einen String
+    final_file = img_path / Path(img_name).name
+    
+    fig.write_image(str(final_file),
+                    width=px_w,
+                    height=px_h,
+                    scale=1)
