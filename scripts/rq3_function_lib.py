@@ -600,23 +600,31 @@ def plot_yearly_autobahn_premium_line(yearly_df:pd.DataFrame,statistic:str="mean
     fig.show()
 
 def plot_autobahn_premium_barchart(yearly_df:pd.DataFrame,statistic:str="mean"):
-
+    '''
+    This function plots a bar chart where each bar represents one fuel type Autobahn premium in a year. So for each year, we have three separate bars. The price statistic is "mean" by default, but can also be changed to "median" if wanted. Returns nothing.
+    i: pd.DataFrame yearly_df, string statistic
+    o: None 
+    '''
+    #filter & preprocessing.
     yearly_df = yearly_df[yearly_df["statistic"] == statistic]
     yearly_df["year"] = pd.to_datetime(yearly_df["year"].astype(int).astype(str), format="%Y")
 
     fig= go.Figure()
 
+    #using the same colormap as in the lineplot.
     color_map = {
          "diesel": "rgb(0,176,246)",
         "e5": "rgb(0,100,80)",
         "e10": "rgb(231,107,243)"
     }
+
+    #create a df with the values for each fuel type.
     y_diesel = yearly_df[yearly_df["fuel_type"] == "diesel"]
     y_e5 = yearly_df[yearly_df["fuel_type"] == "e5"]
     y_e10 = yearly_df[yearly_df["fuel_type"] == "e10"]
 
 
-
+    #create separate bars for each fuel type.
     fig.add_trace(go.Bar(
         x = yearly_df["year"].dt.year,
         y = y_diesel["autobahn_coef"],
@@ -640,7 +648,6 @@ def plot_autobahn_premium_barchart(yearly_df:pd.DataFrame,statistic:str="mean"):
                 "Autobahn premium: %{y:.3f} €/liter<br>"
                 "<extra></extra>"
             )
-
     ))
     fig.add_trace(go.Bar(
         x = yearly_df["year"].dt.year,
@@ -680,82 +687,17 @@ def plot_autobahn_premium_barchart(yearly_df:pd.DataFrame,statistic:str="mean"):
     save_png(fig, Path(r'rq3_premium_barchart.png'),legend=True)
     fig.show()
 
-#NOTE:funktioniert noch nicht wie gewollt (verscheidene symbole für autobahn oder nicht klappen nicht)
-#TODO:so abändern, dass alle autobahn tankstellen geplottet werden
-def plot_station_price_map(analyses_panel:pl.DataFrame,fuel_type:str,statistic="median"):
-    
-    price_col = f"{fuel_type}_{statistic}"
-
-    # create a pandas df with the necessary data for a map plot
-    plot_df = (analyses_panel.select(["station_uuid", "autobahn", "brand_category", "latitude", "longitude", pl.col(price_col).alias("price")])
-                       .filter(pl.col("price").is_not_null() & pl.col("latitude").is_not_null() & pl.col("longitude").is_not_null())
-                       .group_by(["station_uuid", "autobahn", "brand_category", "latitude", "longitude"])
-                       .agg(pl.median("price").alias("station_price_median"))
-                       .sort("station_price_median")
-                       .to_pandas())
-    #create plot
-    fig = go.Figure()
-
-    symbol_map = {
-        0: ("circle", "non-autobahn"),
-        1: ("diamond", "autobahn")
-    }
-
-    cmin = plot_df["station_price_median"].min()
-    cmax = plot_df["station_price_median"].max()
-
-    for i, (cat, (symb, label)) in enumerate(symbol_map.items()):
-        df_sub = plot_df[plot_df["autobahn"] == cat]
-
-        fig.add_trace(go.Scattermap(
-            lat=df_sub["latitude"],
-            lon=df_sub["longitude"],
-            mode="markers",
-            name=label,
-            marker=dict(
-                size=9,
-                symbol=symb,
-                color=df_sub["station_price_median"],
-                colorscale="Turbo",
-                cmin=cmin,
-                cmax=cmax,
-                showscale=(i == 0),
-                colorbar=dict(title="station price median") if i == 0 else None
-            ),
-            customdata=df_sub[["station_uuid", "autobahn", "brand_category", "station_price_median"]],
-            hovertemplate=
-                "UUID: %{customdata[0]}<br>"
-                "Autobahn: %{customdata[1]}<br>"
-                "Brand category: %{customdata[2]}<br>"
-                "Median price: %{customdata[3]:.3f}<extra></extra>"
-        ))
-
-    fig.update_layout(
-        title=f"{statistic} price map for {fuel_type} for each station",
-        map=dict(
-            style="open-street-map",
-            zoom=4,
-            center=dict(
-                lat=plot_df["latitude"].mean(),
-                lon=plot_df["longitude"].mean()
-            )
-        ),
-        template="plotly_white",
-        margin=dict(l=10, r=10, t=50, b=10)
-    )
-
-    fig.show()
 
 #NOTE: parts of this function were written with the help of chatgpt.
 def perform_wilcoxon_variance_test_on_autobahn(residuals_df:pd.DataFrame,measure:str="mad",min_station_observations:int=30):
     
-    #check if meassure is valid
+    #check if meassure is valid.
     if measure not in ["mad", "sd"]:
-        raise ValueError("measure has to be mean absolute deviation (mad) or standard deviation (sd)")
+        raise ValueError("measure has to be median absolute deviation (mad) or standard deviation (sd)")
     
     df = residuals_df.copy()
 
-    #calculate the volatility per station and extract those with suffietient sample size
+    #calculate the volatility per station and extract those with suffiecient sample size.
     station_volatility = (df.groupby(["match_set_uuid", "station_uuid", "year", "autobahn"], as_index = False)
                             .agg(n_obs = ("residuals", "size"),
                                  residuals_sd = ("residuals", "std"),
@@ -767,11 +709,11 @@ def perform_wilcoxon_variance_test_on_autobahn(residuals_df:pd.DataFrame,measure
 
     results = []
 
-    #iterare over the years and compute wilcoxon test
+    #iterare over the years and compute wilcoxon test.
     for year in sorted(station_volatility["year"].dropna().unique()):
         yearly_df = station_volatility[station_volatility["year"] == year].copy()
 
-        #create test and control group
+        #create test and control group.
         test = (yearly_df[yearly_df["autobahn"] == 1]
                 .rename(columns = {volatility_col: "test_volatility"})
                 [["match_set_uuid", "test_volatility"]])
@@ -780,18 +722,18 @@ def perform_wilcoxon_variance_test_on_autobahn(residuals_df:pd.DataFrame,measure
                     .groupby("match_set_uuid", as_index = False)
                     .agg(control_volatility = (volatility_col, "mean")))
         
-        #create test-control pairs and check if theyre not empty (-> if empty, skip for this year)
+        #create test-control pairs and check that they're not empty (-> if empty, skip for this year).
         paired = test.merge(controls, on = "match_set_uuid", how = "inner").dropna()
         if paired.empty:
             continue
 
-        #calculate volatility difference
+        #calculate volatility difference and round to 12 decimals.
         diff = np.round((paired["test_volatility"] - paired["control_volatility"]).to_numpy(), 12)
 
-        #if there if no difference, drop the pair ( default zero handling for wilcoxon test)
+        #if there if no difference, drop the pair (default zero handling for wilcoxon test).
         diff = diff[diff != 0]
 
-        #return empty results if there are no non zero differences
+        #return empty results if there are no non zero differences.
         if len(diff) == 0:
             results.append({
                 "year": year,
@@ -805,7 +747,7 @@ def perform_wilcoxon_variance_test_on_autobahn(residuals_df:pd.DataFrame,measure
             })
             continue
 
-        #calculate wilcoxon results
+        #calculate wilcoxon results.
         res = stats.wilcoxon(diff, alternative = "two-sided", method = "auto")
 
         results.append({
@@ -823,12 +765,12 @@ def perform_wilcoxon_variance_test_on_autobahn(residuals_df:pd.DataFrame,measure
 
 def plot_wilcoxon_results_loolipop(wilcoxon_df:pd.DataFrame):
     '''
-    Plots a horizontal lollipop plot for the median volatility difference of autobahn station prices and non autobahn station prices. The difference is positive, when the autobahn volatility is higher than the non autobahn volatility. Returns nothing.
+    Plots a lollipop plot for the median volatility difference of autobahn station prices and non autobahn station prices. The difference is positive, when the autobahn volatility is higher than the non autobahn volatility. Returns nothing.
     i: pd.Dataframe wilcoxon_df
     o: None
     '''
 
-    # Build one single trace for all stems using None separators
+    # Build one single trace for all stems using None separators.
     #this part was written with the help of chatgpt.
     x_stems = []
     y_stems = []
@@ -840,7 +782,7 @@ def plot_wilcoxon_results_loolipop(wilcoxon_df:pd.DataFrame):
 
     fig = go.Figure()
 
-    # Stems
+    # create the vertical lines to the points.
     fig.add_trace(
         go.Scatter(
             x=x_stems,
@@ -857,7 +799,7 @@ def plot_wilcoxon_results_loolipop(wilcoxon_df:pd.DataFrame):
         wilcoxon_df["median_difference"]
     ))
 
-    # Lollipop heads
+    # create the lollipop heads.
     fig.add_trace(
         go.Scatter(
             x=wilcoxon_df["year"],
@@ -888,10 +830,15 @@ def plot_wilcoxon_results_loolipop(wilcoxon_df:pd.DataFrame):
 
 #---- helper methods ----
     
-#classify each brand into one of these categoties: brand, non brand, not defined/unknown
-#written with the help of chatgpt
+#classify each brand into one of these categoties: brand, non brand, not defined/unknown.
+#NOTE: this method was written with the help of chatgpt.
 def __classify_brand(brand:str):
-    #define fixed variables
+    '''
+    This method classifies the brand of a gas station using its name and a predefined list of buzzwords that indicate the brand class of a station. The brand classes are "unbranded", "branded" and "not defined/unknown".
+    i: string brand
+    o: string brand_class
+    '''
+    #define what to consider as brand station and what as free
     BRANDS = ["ARAL", "SHELL", "JET", "TOTAL", "TOTAL ENERGIES", "ESSO", "AVIA", "AVIA EXPRESS"
     "HEM", "HOYER", "ORLEN", "Q1", "STAR", "RAIFFEISEN", "AGIP",
     "ENI", "OMV", "OIL!", "WESTFALEN"]
@@ -986,15 +933,25 @@ def __build_match_map(stations:pl.DataFrame, k:int, max_dist:int):
 
     return match_map.join(valid_sets, on = "match_set_uuid", how = "inner")
 
-# calculate mean absolute devianion
+# calculate median absolute devianion
 #written with the help of chatgpt
 def __mad(x):
+    '''
+    This method calculates the median absolute deviation for a given one-dim array-like/pd.Series.
+    i: pd.Series / one-dim array-like x
+    o: float mad
+    '''
     x = np.asarray(x, dtype=float)
     median = np.median(x)
     return np.median(np.abs(x - median))
 
 #saves plot to a png with sufficient resolution for poster
 def save_png(fig, img_name:Path, legend:bool=False):
+    '''
+    This method saves plotly figures with high resolution (for the poster) to the given output path. Before saving the plot, the method adjusts the text to an appropriate size. If the plot has legend, set legend to True so it also adjusts the legends font size before saving. The chosen figure name should contain the suffix ".png". Returns nothing.
+    i: plotly Figure fig, Path img_name, bool legend
+    o: None
+    '''
 
     px_w = 3000
     px_h = 2250
