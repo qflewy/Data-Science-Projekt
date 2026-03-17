@@ -7,50 +7,55 @@ import geopandas as gpd
 import osmnx as ox
 from scipy import stats
 from scipy.spatial import KDTree
-from IPython.display import display
 import numpy as np
 from linearmodels.iv import AbsorbingLS
 
 
-def show_median_price_heatmap_per_region(region_price_path:Path, region_path:Path, year:int, fuel_type:str):
+def show_median_price_heatmap_per_region(region_price_path:Path, region_path:Path, year:int, fuel_type:str,monthly_median_prices:Path=None,use_median_file:bool=False):
     '''
-    This function plots a map that dynamically projects the monthly median prices of a selected fuel type over a selected year for all post code Leitregionen. Returns nothing.
-    i: Path region_price_path, Path region_path, int year, string fuel_type
+    This function plots a map that dynamically projects the monthly median prices of a selected fuel type over a selected year for all post code Leitregionen. If the monthly medians file exists, set use_median_file to True and give the filepath as input for monthly_median_prices to avoid having to compute the values from scratch. Returns nothing.
+    i: Path region_price_path, Path region_path, int year, string fuel_type, Path monthly_median_prices, bool use_median_file
     o: None
     '''
+    #for website: if the median price file exists, use it to avoid computational overhead.
+    if use_median_file & monthly_median_prices.exists():
+        display_df = pl.read_parquet(monthly_median_prices)
+    else:
 
-    df_regions = pl.read_csv(region_path, dtypes={"leit_plz": pl.Utf8})
-    regions = df_regions["leit_plz"].to_list()
+        df_regions = pl.read_csv(region_path, dtypes={"leit_plz": pl.Utf8})
+        regions = df_regions["leit_plz"].to_list()
 
-    #create an empty list for all the regional lazyframes.
-    global_lf_list = []
+        #create an empty list for all the regional lazyframes.
+        global_lf_list = []
 
-    #loop over all regions to calculate their monthly median.
-    #this part was written with the help of gemini.
-    for region in regions:
-        file_path = region_price_path / f"mean_median_price_region_{region}.csv"
+        #loop over all regions to calculate their monthly median.
+        #this part was written with the help of gemini.
+        for region in regions:
+            file_path = region_price_path / f"mean_median_price_region_{region}.csv"
 
-        if file_path.exists():
+            if file_path.exists():
 
-            region_lf = pl.scan_csv(file_path)
+                region_lf = pl.scan_csv(file_path)
 
-            processed_region_lf = (
-                region_lf.with_columns(pl.col("timestamp_utc").str.to_datetime("%Y-%m-%dT%H:%M:%S%.f%z"))
-                .filter(pl.col("timestamp_utc").dt.year() == year) #filter for selected year.
-                .with_columns(pl.col("timestamp_utc").dt.strftime("%Y-%m").alias("month"),
-                            pl.lit(region).alias("region")
-                        )
-                .group_by(["month", "region"])
-                .agg(pl.col(f"{fuel_type}_median").median().alias(f"{fuel_type}_median_price")) #calculate monthly median price.
-            )
-            global_lf_list.append(processed_region_lf)
-        else: continue
+                processed_region_lf = (
+                    region_lf.with_columns(pl.col("timestamp_utc").str.to_datetime("%Y-%m-%dT%H:%M:%S%.f%z"))
+                    .filter(pl.col("timestamp_utc").dt.year() == year) #filter for selected year.
+                    .with_columns(pl.col("timestamp_utc").dt.strftime("%Y-%m").alias("month"),
+                                pl.lit(region).alias("region")
+                            )
+                    .group_by(["month", "region"])
+                    .agg(pl.col(f"{fuel_type}_median").median().alias(f"{fuel_type}_median_price")) #calculate monthly median price.
+                )
+                global_lf_list.append(processed_region_lf)
+            else: continue
 
-    #collect all lazyframes and concatenate to a dataframe.
-    global_df = pl.concat(global_lf_list).collect()
+        #collect all lazyframes and concatenate to a dataframe.
+        global_df = pl.concat(global_lf_list).collect()
 
-    #join prices with regions to get the coordinates for the respective median price.
-    display_df = (global_df.join(df_regions, left_on = "region", right_on = "leit_plz", how = "left").sort("month"))
+        #join prices with regions to get the coordinates for the respective median price.
+        display_df = (global_df.join(df_regions, left_on = "region", right_on = "leit_plz", how = "left").sort("month"))
+
+    
 
     #get min and max price for an constant colorscale over the year.
     min_price = display_df[f"{fuel_type}_median_price"].min()
@@ -63,8 +68,6 @@ def show_median_price_heatmap_per_region(region_price_path:Path, region_path:Pat
         lon = "avg_lng",
         color = f"{fuel_type}_median_price",
         center = {"lat": 51.16, "lon": 10.45}, #geographical centre of Germany.
-        zoom = 4,
-        map_style = "open-street-map",
         animation_frame = "month",
         hover_name = "region",
         title = f"Comparision of the median {fuel_type} price in year {year}",
@@ -73,7 +76,20 @@ def show_median_price_heatmap_per_region(region_price_path:Path, region_path:Pat
         color_continuous_scale = "RdYlBu_r"
     )
 
-    fig.update_layout(margin = {"r":0,"t":50,"l":0,"b":0})
+    fig.update_layout(margin = {"r":0,"t":0,"l":0,"b":0},
+                      map=dict(
+                        style="open-street-map",
+                        center=dict(lat=51.1657, lon=10.4515),
+                        zoom=6,
+                        bounds=dict(
+                            west=4.5,
+                            east=16.5,
+                            south=47.0,
+                            north=55.2
+                        )),
+                        width=1200,
+                        height=1400
+    )
     fig.update_traces(marker = dict(size = 15, opacity = 1))
     fig.show()
 
@@ -304,41 +320,47 @@ def filter_autobahn_from_borders(border_file:Path,autobahn_file:Path,output_path
 
     no_autobahn_border_df.write_csv(output_path / "lower_non_autobahn_border_stations.csv")
 
-def show_border_price_difference(median_price_path:Path,border_stations_file:Path,fuel_type:str,country:str):
+def show_border_price_difference(median_price_path:Path,border_stations_file:Path,fuel_type:str,country:str,median_distributions_file:Path=None,use_distributions_file:bool=False):
     '''
-    This function plots a boxplot with the distributions of the median fuel prices of a selected fuel type over time for a selected country. For each year a box for the border region stations and a box for the surrounding region stations is plottet. Returns nothing.
-    i: Path median_price_path, Path border_stations_file, string fuel_type, string country
+    This function plots a boxplot with the distributions of the median fuel prices of a selected fuel type over time for a selected country. For each year a box for the border region stations and a box for the surrounding region stations is plottet.
+    For the website use: if the median distribution file exists, you can set use_distributions_file to True and give the Path as parameter. Returns nothing.
+    i: Path median_price_path, Path border_stations_file, string fuel_type, string country, median_distribution
     o: None
     '''
-    price_file = median_price_path / r'*/*.parquet'
-    
-    #initialize lazyframes & preprocess.
-    border_lf = pl.scan_csv(border_stations_file).with_columns(pl.col("uuid").cast(pl.Utf8))
 
-    price_lf = pl.scan_parquet(price_file).with_columns(pl.col("station_uuid").cast(pl.Utf8))
+    if use_distributions_file & median_distributions_file.exists():
+        yearly_df = pl.read_parquet(median_distributions_file)
+    else:
 
-    preprocessed_lf = (price_lf.with_columns(pl.col("day").dt.year().alias("year"))
-                       .join(border_lf,
-                            left_on = "station_uuid",
-                            right_on = "uuid",               
-                            how = "inner"))
-    
-    # get dataframe for yearly test.
-    yearly_lf = (preprocessed_lf.group_by(["year", "neighbour_country", "border_region", "station_uuid"])
-                 .agg(pl.col(f"{fuel_type}_median").median().alias(f"{fuel_type}_median_price")))
+        price_file = median_price_path / r'*/*.parquet'
+        
+        #initialize lazyframes & preprocess.
+        border_lf = pl.scan_csv(border_stations_file).with_columns(pl.col("uuid").cast(pl.Utf8))
 
+        price_lf = pl.scan_parquet(price_file).with_columns(pl.col("station_uuid").cast(pl.Utf8))
+
+        preprocessed_lf = (price_lf.with_columns(pl.col("day").dt.year().alias("year"))
+                        .join(border_lf,
+                                left_on = "station_uuid",
+                                right_on = "uuid",               
+                                how = "inner"))
+        
+        # get dataframe for yearly test.
+        yearly_df = (preprocessed_lf.group_by(["year", "neighbour_country", "border_region", "station_uuid"])
+                    .agg(pl.col(f"{fuel_type}_median").median().alias(f"{fuel_type}_median_price"))).collect()
 
     #filter and collect data for country.
-    plot_df = (yearly_lf.filter(
+    plot_df = (yearly_df.filter(
         (pl.col("neighbour_country") == country)
         ).select(["border_region", f"{fuel_type}_median_price", "year"])
-        .collect()
         .to_pandas())
     plot_df["year"] = pd.to_datetime(plot_df["year"].astype(int).astype(str), format="%Y")
     #check if data is available.
     if plot_df.empty:
         print(f"no data found for {country}!")
         return
+    
+
 
     fig = go.Figure()
 
