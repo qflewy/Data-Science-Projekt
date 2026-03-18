@@ -70,17 +70,22 @@ def total_updates(prices_path: Path, start_year: int, end_year: int) -> pl.DataF
     })
 
 def save_png(fig, img_name:Path, legend:bool=False):
+    '''
+    This method saves plotly figures with high resolution (for the poster) to the given output path. Before saving the plot, the method adjusts the text to an appropriate size. If the plot has legend, set legend to True so it also adjusts the legends font size before saving. The chosen figure name should contain the suffix ".png". Returns nothing.
+    i: plotly Figure fig, Path img_name, bool legend
+    o: None
+    '''
 
-    px_w = 3300
-    px_h = 1650
+    px_w = 3700
+    px_h = 2250
 
     fig = fig.full_figure_for_development(warn = False)
     fig.update_layout(
         autosize = False,
-        width = px_w,
+        width = px_w/2,
         height = px_h,
-        font = dict(size=44),
-        title = dict(font = dict(size=50),
+        font = dict(size=94),
+        title = dict(font = dict(size =100),
                      y = .98,
                      x = .5,
                      xanchor = "center",
@@ -91,21 +96,24 @@ def save_png(fig, img_name:Path, legend:bool=False):
             legend=dict(
                 orientation="h",
                 yanchor="top",
-                font = dict(size = 38),
+                font = dict(size = 85),
                 y= .92,
                 xanchor="left",
+                itemsizing="constant",
                 x=0
-            )
+            ),
+            #legend_title = None
         )
 
-    fig.update_xaxes(tickfont = dict(size = 38), title_font = dict(size = 40))
-    fig.update_yaxes(tickfont = dict(size = 38), title_font = dict(size = 40))
+    fig.update_xaxes(tickfont = dict(size = 80), title_font = dict(size = 90))
+    fig.update_yaxes(tickfont = dict(size = 80), title_font = dict(size = 90))
 
-    img_path = Path(r'D:/Tankdaten/rq_brand_vs_free')
+    img_path = Path(r'D:\Bilder') #change path to own pc
     fig.write_image(img_path/img_name,
                     width=px_w,
                     height=px_h,
                     scale=1)
+
     
 def anomaly_rate(updates: pl.DataFrame) -> pl.DataFrame:
     """
@@ -119,43 +127,54 @@ def anomaly_rate(updates: pl.DataFrame) -> pl.DataFrame:
 
 def plot_anomaly_rate(combined: pl.DataFrame, parquet_base: Path, start_year: int, end_year: int) -> go.Figure:
     """
-    Compute monthly anomaly rate (anomalies / total price updates)
+    Compute monthly anomaly rate (anomalies / total price updates).
+    Result is cached as a compressed parquet file next to the anomaly files for WebApp.
     """
-    anomalies_per_month = (
-        combined.group_by(["year", "month"]).agg(pl.len().alias("count")).sort(["year", "month"])
-    )
+    cache_path = parquet_base / f"monthly_anomaly_rate_{start_year}_{end_year - 1}.parquet"
 
-    monthly_updates_list = []
-    for year in range(start_year, end_year):
-        year_dir = parquet_base / str(year)
-        if not year_dir.exists():
-            continue
-        counts = (
-            pl.scan_parquet(str(year_dir / "*.parquet"))
-            .select(pl.col("date").str.slice(0, 7).alias("ym"))
-            .group_by("ym")
-            .agg(pl.len().alias("total_updates"))
-            .collect()
+    if cache_path.exists():
+        print(f"Lade Cache: {cache_path.name}")
+        rate_df = pl.read_parquet(cache_path).to_pandas()
+    else:
+        anomalies_per_month = (
+            combined.group_by(["year", "month"]).agg(pl.len().alias("count")).sort(["year", "month"])
         )
-        monthly_updates_list.append(counts)
-        print(f"{year}: {counts['total_updates'].sum():,} updates")
 
-    monthly_updates = (
-        pl.concat(monthly_updates_list)
-        .with_columns([
-            pl.col("ym").str.slice(0, 4).cast(pl.Int32).alias("year"),
-            pl.col("ym").str.slice(5, 2).cast(pl.Int32).alias("month"),
-        ])
-        .drop("ym")
-    )
+        monthly_updates_list = []
+        for year in range(start_year, end_year):
+            year_dir = parquet_base / str(year)
+            if not year_dir.exists():
+                continue
+            counts = (
+                pl.scan_parquet(str(year_dir / "*.parquet"))
+                .select(pl.col("date").str.slice(0, 7).alias("ym"))
+                .group_by("ym")
+                .agg(pl.len().alias("total_updates"))
+                .collect()
+            )
+            monthly_updates_list.append(counts)
+            print(f"{year}: {counts['total_updates'].sum():,} updates")
 
-    joined = (
-        anomalies_per_month
-        .rename({"count": "anomalies"})
-        .join(monthly_updates.rename({"total_updates": "updates"}), on=["year", "month"], how="inner")
-        .sort(["year", "month"])
-    )
-    rate_df = anomaly_rate(joined).to_pandas()
+        monthly_updates = (
+            pl.concat(monthly_updates_list)
+            .with_columns([
+                pl.col("ym").str.slice(0, 4).cast(pl.Int32).alias("year"),
+                pl.col("ym").str.slice(5, 2).cast(pl.Int32).alias("month"),
+            ])
+            .drop("ym")
+        )
+
+        joined = (
+            anomalies_per_month
+            .rename({"count": "anomalies"})
+            .join(monthly_updates.rename({"total_updates": "updates"}), on=["year", "month"], how="inner")
+            .sort(["year", "month"])
+        )
+        rate_pl = anomaly_rate(joined).select(["year", "month", "anomalies", "updates", "anomaly_rate"])
+        rate_pl.write_parquet(cache_path, compression="zstd", compression_level=19)
+        print(f"Cache gespeichert: {cache_path.name} ({cache_path.stat().st_size / 1024:.1f} KB)")
+        rate_df = rate_pl.to_pandas()
+
     rate_df["date"] = pd.to_datetime(rate_df[["year", "month"]].assign(day=1))
 
     fig = go.Figure()
@@ -205,34 +224,65 @@ def plot_anomalies_per_year(combined: pl.DataFrame, start_year: int, end_year: i
     return fig
 
 
-def plot_anomaly_rate_by_hour(parquet_base: Path, year: int) -> go.Figure:
+def precompute_anomaly_rate_by_hour(parquet_base: Path, anomalies_path: Path, years: list[int]) -> None:
+    """
+    Precompute hourly anomaly rate for each year and save as small parquet files in anomalies_path for WebApp.
+    """
+    import gc
+    for year in years:
+        cache_path = anomalies_path / f"hourly_anomaly_rate_{year}.parquet"
+        if cache_path.exists():
+            print(f"{year}: bereits vorhanden, übersprungen")
+            continue
+        print(f"{year}: berechne...")
+        lf = pl.scan_parquet(str(parquet_base / str(year) / "*.parquet"))
+        hourly = (
+            lf.with_columns([
+                pl.col("date").str.slice(11, 2).cast(pl.Int32).alias("hour"),
+                (pl.col("diesel").is_not_null() & pl.col("e10").is_not_null() & (pl.col("diesel") >= pl.col("e10"))).alias("anomaly")
+            ])
+            .group_by("hour")
+            .agg([pl.len().alias("updates"), pl.col("anomaly").sum().alias("anomalies")])
+            .with_columns((pl.col("anomalies") / pl.col("updates")).alias("anomaly_rate"))
+            .sort("hour")
+            .collect()
+        )
+        hourly.write_parquet(cache_path, compression="zstd", compression_level=19)
+        print(f"{year}: {cache_path.stat().st_size / 1024:.1f} KB gespeichert")
+        del lf, hourly
+        gc.collect()
+
+
+def plot_anomaly_rate_by_hour(parquet_base: Path, year: int, anomalies_path: Path | None = None) -> go.Figure:
     """
     Plot anomaly rate (diesel >= e10) by hour of day for a given year as an interactive Plotly bar chart.
+    Loads from precomputed cache in anomalies_path if available.
     """
-    lf = pl.scan_parquet(str(parquet_base / str(year) / "*.parquet"))
-
-    # Extract hour via string slice (positions 11-12 = "HH") — avoids regex+datetime parsing crash on large files
-    lf = lf.with_columns([
-        pl.col("date").str.slice(11, 2).cast(pl.Int32).alias("hour"),
-        (
-            pl.col("diesel").is_not_null() &
-            pl.col("e10").is_not_null() &
-            (pl.col("diesel") >= pl.col("e10"))
-        ).alias("anomaly")
-    ])
-
-    hourly = (
-        lf.group_by("hour")
-        .agg([
-            pl.len().alias("updates"),
-            pl.col("anomaly").sum().alias("anomalies")
-        ])
-        .with_columns(
-            (pl.col("anomalies") / pl.col("updates")).alias("anomaly_rate")
+    cache_path = anomalies_path / f"hourly_anomaly_rate_{year}.parquet" if anomalies_path else None
+    if cache_path and cache_path.exists():
+        hourly = pl.read_parquet(cache_path)
+    else:
+        lf = pl.scan_parquet(str(parquet_base / str(year) / "*.parquet"))
+        hourly = (
+            lf.with_columns([
+                pl.col("date").str.slice(11, 2).cast(pl.Int32).alias("hour"),
+                (
+                    pl.col("diesel").is_not_null() &
+                    pl.col("e10").is_not_null() &
+                    (pl.col("diesel") >= pl.col("e10"))
+                ).alias("anomaly")
+            ])
+            .group_by("hour")
+            .agg([
+                pl.len().alias("updates"),
+                pl.col("anomaly").sum().alias("anomalies")
+            ])
+            .with_columns(
+                (pl.col("anomalies") / pl.col("updates")).alias("anomaly_rate")
+            )
+            .sort("hour")
+            .collect()
         )
-        .sort("hour")
-        .collect()
-    )
 
     fig = go.Figure(go.Bar(
         x=hourly["hour"].to_list(),
@@ -273,13 +323,39 @@ def prepare_station_map(station_stats: pl.DataFrame, stations: pl.DataFrame, top
     )
 
 
-def plot_top_stations_map(stations_csv: Path, stations_parquet: Path, stats_cache: Path, start_year: int, end_year: int, top_n: int = 100, min_updates: int = 50000) -> go.Figure:
+def precompute_top_stations_map(stations_csv: Path, stations_parquet: Path, stats_cache: Path, anomalies_path: Path, min_updates: int = 50000) -> None:
     """
-    Load station data and stats, then plot the top N stations by anomaly rate.
+    Precompute joined station map data (filtered, sorted by anomaly_rate) and save to anomalies_path.
+    The webapp can then slice Top N dynamically without reloading the large source files.
     """
+    cache_path = anomalies_path / "top_stations_map.parquet"
     stations = load_stations(stations_csv, stations_parquet)
     station_stats = pl.read_parquet(stats_cache).filter(pl.col("updates") >= min_updates)
-    map_df = prepare_station_map(station_stats, stations, top_n=top_n)
+    joined = (
+        station_stats
+        .sort("anomaly_rate", descending=True)
+        .join(stations, left_on="station_uuid", right_on="uuid", how="left")
+        .with_columns(
+            (pl.col("brand").fill_null("Unknown") + " " + pl.col("city").fill_null("")).alias("name")
+        )
+        .select(["station_uuid", "name", "latitude", "longitude", "anomalies", "updates", "anomaly_rate"])
+    )
+    joined.write_parquet(cache_path, compression="zstd", compression_level=19)
+    print(f"Gespeichert: {cache_path.name} ({cache_path.stat().st_size / 1024:.1f} KB, {joined.shape[0]} Stationen)")
+
+
+def plot_top_stations_map(stations_csv: Path, stations_parquet: Path, stats_cache: Path, start_year: int, end_year: int, top_n: int = 100, min_updates: int = 50000, anomalies_path: Path | None = None) -> go.Figure:
+    """
+    Load station data and stats, then plot the top N stations by anomaly rate.
+    Loads from precomputed cache in anomalies_path if available.
+    """
+    cache_path = anomalies_path / "top_stations_map.parquet" if anomalies_path else None
+    if cache_path and cache_path.exists():
+        map_df = pl.read_parquet(cache_path).head(top_n)
+    else:
+        stations = load_stations(stations_csv, stations_parquet)
+        station_stats = pl.read_parquet(stats_cache).filter(pl.col("updates") >= min_updates)
+        map_df = prepare_station_map(station_stats, stations, top_n=top_n)
     station_data = map_df.to_pandas()
 
     import plotly.express as px
