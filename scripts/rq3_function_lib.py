@@ -91,6 +91,7 @@ def show_median_price_heatmap_per_region(region_price_path:Path, region_path:Pat
                         height=1400
     )
     fig.update_traces(marker = dict(size = 15, opacity = 1))
+
     fig.show()
 
 #NOTE: parts of this function were written with the help of gemini.
@@ -706,7 +707,6 @@ def plot_autobahn_premium_barchart(yearly_df:pd.DataFrame,statistic:str="mean"):
         bargroupgap = .1 
     )
 
-    save_png(fig, Path(r'rq3_premium_barchart.png'),legend=True)
     fig.show()
 
 
@@ -983,9 +983,9 @@ def save_png(fig, img_name:Path, legend:bool=False):
         autosize = False,
         width = px_w/2,
         height = px_h,
-        font = dict(size=44),
-        title = dict(font = dict(size =50),
-                     y = .98,
+        font = dict(size=94),
+        title = dict(font = dict(size =100),
+                     y = .99,
                      x = .5,
                      xanchor = "center",
                      yanchor = "top")
@@ -995,18 +995,19 @@ def save_png(fig, img_name:Path, legend:bool=False):
             legend=dict(
                 orientation="h",
                 yanchor="top",
-                font = dict(size = 38),
-                y= .94,
+                font = dict(size = 85),
+                y= .97,
                 xanchor="right",
+                itemsizing="constant",
                 x=0
             ),
-            #legend_title = None
+            legend_title = None
         )
 
-    fig.update_xaxes(tickfont = dict(size = 38), title_font = dict(size = 40))
-    fig.update_yaxes(tickfont = dict(size = 38), title_font = dict(size = 40))
+    fig.update_xaxes(tickfont = dict(size = 80), title_font = dict(size = 90))
+    fig.update_yaxes(tickfont = dict(size = 80), title_font = dict(size = 90))
 
-    img_path = Path(r'/Users/sebastian/data-science-projekt/rq_results')
+    img_path = Path(r'/Users/sebastian/data-science-projekt/rq_results') #change path to own pc
     fig.write_image(img_path/img_name,
                     width=px_w,
                     height=px_h,
@@ -1016,7 +1017,8 @@ if __name__=="__main__":
    
     stations_path = Path(r'/Users/sebastian/data-science-projekt/tankerkoenig_data/stations/stations.csv')
     border_output_path = Path(r'/Users/sebastian/data-science-projekt/tankerkoenig_data/stations')
+    summany_file = Path(r'/Users/sebastian/data-science-projekt/rq_results/rq3_panel_summary.csv')
     #get_borderregion_stations(stations_path, border_output_path)
-    
     #get_autobahn_stations(stations_path, border_output_path)
-    filter_autobahn_from_borders(border_output_path / "lower_border_stations.csv", border_output_path / "autobahn_stations.csv", border_output_path)
+    #filter_autobahn_from_borders(border_output_path / "lower_border_stations.csv", border_output_path / "autobahn_stations.csv", border_output_path)
+    
