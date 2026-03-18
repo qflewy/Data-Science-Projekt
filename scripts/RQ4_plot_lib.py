@@ -155,23 +155,25 @@ def plot_avg_premium_per_brand(df_per_brand, free, fuel="e10_mean"):
         template="plotly_white"
     )
     fig.add_hline(y=0, line_color="black", line_width=1)
-    fig.show()
     return fig
 
 def save_png(fig, img_name:Path, legend:bool=False):
+    '''
+    This method saves plotly figures with high resolution (for the poster) to the given output path. Before saving the plot, the method adjusts the text to an appropriate size. If the plot has legend, set legend to True so it also adjusts the legends font size before saving. The chosen figure name should contain the suffix ".png". Returns nothing.
+    i: plotly Figure fig, Path img_name, bool legend
+    o: None
+    '''
 
-    px_w = 3300
-    px_h = 1650
+    px_w = 3700
+    px_h = 2250
 
     fig = fig.full_figure_for_development(warn = False)
     fig.update_layout(
         autosize = False,
-        width = px_w,
+        width = px_w/2,
         height = px_h,
-        font = dict(size=44),
-        paper_bgcolor = "white",
-        plot_bgcolor = "white",
-        title = dict(font = dict(size=50),
+        font = dict(size=94),
+        title = dict(font = dict(size =100),
                      y = .98,
                      x = .5,
                      xanchor = "center",
@@ -182,17 +184,19 @@ def save_png(fig, img_name:Path, legend:bool=False):
             legend=dict(
                 orientation="h",
                 yanchor="top",
-                font = dict(size = 38),
+                font = dict(size = 85),
                 y= .92,
                 xanchor="left",
+                itemsizing="constant",
                 x=0
-            )
+            ),
+            #legend_title = None
         )
 
-    fig.update_xaxes(tickfont = dict(size = 38), title_font = dict(size = 40))
-    fig.update_yaxes(tickfont = dict(size = 38), title_font = dict(size = 40))
+    fig.update_xaxes(tickfont = dict(size = 80), title_font = dict(size = 90))
+    fig.update_yaxes(tickfont = dict(size = 80), title_font = dict(size = 90))
 
-    img_path = Path(r'D:/Tankdaten/rq_brand_vs_free')
+    img_path = Path(r'D:/Bilder') #change path to own pc
     fig.write_image(img_path/img_name,
                     width=px_w,
                     height=px_h,
