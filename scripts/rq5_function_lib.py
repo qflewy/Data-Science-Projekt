@@ -2,6 +2,10 @@ from pathlib import Path
 import polars as pl
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.express as px
+import gc
+from collections import defaultdict
+
 
 def load_stations(stations_csv: Path, stations_parquet: Path) -> pl.DataFrame:
     """
@@ -35,9 +39,9 @@ def total_updates(prices_path: Path, start_year: int, end_year: int) -> pl.DataF
     """
     Count total updates and anomalies (diesel >= e10) per station.
     Only rows where both diesel > 0 and e10 > 0 are considered (excludes diesel-only stations).
+    Uses pandas with file-by-file iteration instead of Polars scan_parquet to avoid
+    loading all years into memory at once (Multiple Crashes then asked Claude Code how to fix that and he suggested this and it worked)
     """
-    import gc
-    from collections import defaultdict
 
     all_files = []
     for year in range(start_year, end_year):
@@ -51,17 +55,19 @@ def total_updates(prices_path: Path, start_year: int, end_year: int) -> pl.DataF
     update_counts: dict = defaultdict(int)
     anomaly_counts: dict = defaultdict(int)
 
-    for i, f in enumerate(all_files):
+    for f in all_files:
         df = pd.read_parquet(str(f), columns=["station_uuid", "diesel", "e10"])
+
         valid = df[(df["diesel"].notna()) & (df["e10"].notna()) & (df["diesel"] > 0) & (df["e10"] > 0)]
+
         for uuid, cnt in valid.groupby("station_uuid").size().items():
             update_counts[uuid] += int(cnt)
+
         for uuid, cnt in valid[valid["diesel"] >= valid["e10"]].groupby("station_uuid").size().items():
             anomaly_counts[uuid] += int(cnt)
+
         del df, valid
         gc.collect()
-        if (i + 1) % 12 == 0:
-            print(f"  {i + 1}/{len(all_files)} files done")
 
     return pl.DataFrame({
         "station_uuid": list(update_counts.keys()),
@@ -70,11 +76,10 @@ def total_updates(prices_path: Path, start_year: int, end_year: int) -> pl.DataF
     })
 
 def save_png(fig, img_name:Path, legend:bool=False):
-    '''
-    This method saves plotly figures with high resolution (for the poster) to the given output path. Before saving the plot, the method adjusts the text to an appropriate size. If the plot has legend, set legend to True so it also adjusts the legends font size before saving. The chosen figure name should contain the suffix ".png". Returns nothing.
-    i: plotly Figure fig, Path img_name, bool legend
-    o: None
-    '''
+    """
+    This method saves plotly figures with high resolution (for the poster) to the given output path. Before saving the plot,
+    the method adjusts the text to an appropriate size. If the plot has legend, set legend to True so it also adjusts the legends font size before saving. The chosen figure name should contain the suffix ".png". Returns nothing.
+    """
 
     px_w = 3700
     px_h = 2250
@@ -133,7 +138,6 @@ def plot_anomaly_rate(combined: pl.DataFrame, parquet_base: Path, start_year: in
     cache_path = parquet_base / f"monthly_anomaly_rate_{start_year}_{end_year - 1}.parquet"
 
     if cache_path.exists():
-        print(f"Lade Cache: {cache_path.name}")
         rate_df = pl.read_parquet(cache_path).to_pandas()
     else:
         anomalies_per_month = (
@@ -153,7 +157,6 @@ def plot_anomaly_rate(combined: pl.DataFrame, parquet_base: Path, start_year: in
                 .collect()
             )
             monthly_updates_list.append(counts)
-            print(f"{year}: {counts['total_updates'].sum():,} updates")
 
         monthly_updates = (
             pl.concat(monthly_updates_list)
@@ -172,7 +175,7 @@ def plot_anomaly_rate(combined: pl.DataFrame, parquet_base: Path, start_year: in
         )
         rate_pl = anomaly_rate(joined).select(["year", "month", "anomalies", "updates", "anomaly_rate"])
         rate_pl.write_parquet(cache_path, compression="zstd", compression_level=19)
-        print(f"Cache gespeichert: {cache_path.name} ({cache_path.stat().st_size / 1024:.1f} KB)")
+        print(f"Cache saved: {cache_path.name}")
         rate_df = rate_pl.to_pandas()
 
     rate_df["date"] = pd.to_datetime(rate_df[["year", "month"]].assign(day=1))
@@ -184,7 +187,7 @@ def plot_anomaly_rate(combined: pl.DataFrame, parquet_base: Path, start_year: in
         mode="lines+markers",
         marker=dict(size=5),
         line=dict(width=2, color="steelblue"),
-        hovertemplate="%{x|%Y-%m}<br>Rate: %{y:.2f}%<extra></extra>" # with help from Claude Code
+        hovertemplate="%{x|%Y-%m}<br>Rate: %{y:.2f}%<extra></extra>" # from Claude Code
     ))
     fig.update_layout(
         title=f"E10/Diesel Anomaly Rate per Month ({start_year}-{end_year - 1})",
@@ -228,13 +231,10 @@ def precompute_anomaly_rate_by_hour(parquet_base: Path, anomalies_path: Path, ye
     """
     Precompute hourly anomaly rate for each year and save as small parquet files in anomalies_path for WebApp.
     """
-    import gc
     for year in years:
         cache_path = anomalies_path / f"hourly_anomaly_rate_{year}.parquet"
         if cache_path.exists():
-            print(f"{year}: bereits vorhanden, übersprungen")
             continue
-        print(f"{year}: berechne...")
         lf = pl.scan_parquet(str(parquet_base / str(year) / "*.parquet"))
         hourly = (
             lf.with_columns([
@@ -248,14 +248,16 @@ def precompute_anomaly_rate_by_hour(parquet_base: Path, anomalies_path: Path, ye
             .collect()
         )
         hourly.write_parquet(cache_path, compression="zstd", compression_level=19)
-        print(f"{year}: {cache_path.stat().st_size / 1024:.1f} KB gespeichert")
+        
         del lf, hourly
         gc.collect()
+        
+    print("Hourly anomaly rates precomputed.")
 
 
 def plot_anomaly_rate_by_hour(parquet_base: Path, year: int, anomalies_path: Path | None = None) -> go.Figure:
     """
-    Plot anomaly rate (diesel >= e10) by hour of day for a given year as an interactive Plotly bar chart.
+    Plot anomaly rate (diesel >= e10) by hour of day for a given year
     Loads from precomputed cache in anomalies_path if available.
     """
     cache_path = anomalies_path / f"hourly_anomaly_rate_{year}.parquet" if anomalies_path else None
@@ -288,7 +290,7 @@ def plot_anomaly_rate_by_hour(parquet_base: Path, year: int, anomalies_path: Pat
         x=hourly["hour"].to_list(),
         y=hourly["anomaly_rate"].to_list(),
         marker_color="steelblue",
-        hovertemplate="Hour: %{x}<br>Anomaly Rate: %{y:.3f}<extra></extra>",
+        hovertemplate="Hour: %{x}<br>Anomaly Rate: %{y:.3f}<extra></extra>", # from Claude Code
     ))
     fig.update_layout(
         title=f"Anomaly Rate by Hour of Day ({year})",
@@ -327,6 +329,7 @@ def precompute_top_stations_map(stations_csv: Path, stations_parquet: Path, stat
     """
     Precompute joined station map data (filtered, sorted by anomaly_rate) and save to anomalies_path.
     The webapp can then slice Top N dynamically without reloading the large source files.
+    Asked Claude Code for inspiration how to cache files for webapp
     """
     cache_path = anomalies_path / "top_stations_map.parquet"
     stations = load_stations(stations_csv, stations_parquet)
@@ -341,7 +344,6 @@ def precompute_top_stations_map(stations_csv: Path, stations_parquet: Path, stat
         .select(["station_uuid", "name", "latitude", "longitude", "anomalies", "updates", "anomaly_rate"])
     )
     joined.write_parquet(cache_path, compression="zstd", compression_level=19)
-    print(f"Gespeichert: {cache_path.name} ({cache_path.stat().st_size / 1024:.1f} KB, {joined.shape[0]} Stationen)")
 
 
 def plot_top_stations_map(stations_csv: Path, stations_parquet: Path, stats_cache: Path, start_year: int, end_year: int, top_n: int = 100, min_updates: int = 50000, anomalies_path: Path | None = None) -> go.Figure:
@@ -350,15 +352,16 @@ def plot_top_stations_map(stations_csv: Path, stations_parquet: Path, stats_cach
     Loads from precomputed cache in anomalies_path if available.
     """
     cache_path = anomalies_path / "top_stations_map.parquet" if anomalies_path else None
+
     if cache_path and cache_path.exists():
         map_df = pl.read_parquet(cache_path).head(top_n)
     else:
         stations = load_stations(stations_csv, stations_parquet)
         station_stats = pl.read_parquet(stats_cache).filter(pl.col("updates") >= min_updates)
         map_df = prepare_station_map(station_stats, stations, top_n=top_n)
+
     station_data = map_df.to_pandas()
 
-    import plotly.express as px
     fig = px.scatter_mapbox(
         station_data,
         lat="latitude",
@@ -376,4 +379,70 @@ def plot_top_stations_map(stations_csv: Path, stations_parquet: Path, stats_cach
         mapbox_style="open-street-map",
     )
     fig.update_layout(margin=dict(l=0, r=0, t=50, b=0))
+
     return fig, map_df
+
+
+def plot_anomaly_duration_distribution(df_durations: pl.DataFrame) -> go.Figure:
+    """
+    Plot anomaly duration distribution as box plots per year (log scale).
+    """
+    duration_stats = (
+        df_durations
+        .with_columns((pl.col("duration_min") / 60).alias("duration_h"))
+        .group_by("year")
+        .agg([
+            pl.col("duration_h").quantile(0.25).alias("q025"),
+            pl.col("duration_h").median().alias("median"),
+            pl.col("duration_h").quantile(0.75).alias("q075"),
+            pl.col("duration_h").min().alias("min"),
+            pl.col("duration_h").max().alias("max"),
+        ])
+        .sort("year")
+    )
+
+    fig = go.Figure()
+
+    for row in duration_stats.iter_rows(named=True):
+        fig.add_trace(go.Box(
+            x=[row["year"]],
+            q1=[round(row["q025"], 1)],
+            median=[round(row["median"], 1)],
+            q3=[round(row["q075"], 1)],
+            lowerfence=[round(row["min"], 1)],
+            upperfence=[round(row["max"], 1)],
+            name=str(row["year"]),
+            boxpoints=False,
+        ))
+
+    fig.update_layout(
+        title="Anomaly Duration Distribution by Year",
+        yaxis_type="log",
+        yaxis_title="Duration (hours)"
+    )
+
+    return fig
+
+
+def plot_median_anomaly_duration(df_durations: pl.DataFrame) -> go.Figure:
+    """
+    Plot median anomaly duration per year as a line chart.
+    """
+    year_stats = (
+        df_durations.group_by("year")
+        .agg((pl.col("duration_min").median() / 60).alias("median_duration_h"))
+        .sort("year")
+    )
+
+    fig = px.line(
+        year_stats.to_pandas(),
+        x="year",
+        y="median_duration_h",
+        markers=True,
+        title="Median Anomaly Duration by Year"
+    )
+    fig.update_layout(
+        xaxis_title="Year",
+        yaxis_title="Median Duration (hours)"
+    )
+    return fig
