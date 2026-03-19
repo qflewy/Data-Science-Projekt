@@ -1,6 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 import polars as pl
+import re
 
 
 def build_price_change_events_month(
@@ -456,7 +457,6 @@ def build_monthly_price_observations(
 
     return out_file
 
-
 def build_range(
     years: list[int],
     months: list[int] | None = None,
@@ -494,10 +494,232 @@ def build_range(
             except Exception as e:
                 print(f"Fehler bei {year}-{mm}: {e}")
 
+def enrich_station_price_observation_file(
+    in_file: str | Path,
+    out_file: str | Path,
+    compression: str = "zstd",
+) -> None:
+    """
+    Liest eine station_price_observations Parquet-Datei,
+    ergänzt vorab berechnete Analyse-Spalten und schreibt
+    eine neue, angereicherte Parquet-Datei.
+
+    Neue Spalten:
+    - year_month
+    - post_code_str
+    - city_lc
+    - brand_lc
+    - daily_min
+    - diff_to_min
+    - is_daily_min
+    """
+    in_file = Path(in_file)
+    out_file = Path(out_file)
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+
+    # Nur die relevanten Spalten laden
+    lf = pl.scan_parquet(in_file).select([
+        "station_id",
+        "timestamp",
+        "date",
+        "hour",
+        "weekday",
+        "fuel_type",
+        "price",
+        "price_changed",
+        "name",
+        "brand",
+        "street",
+        "house_number",
+        "post_code",
+        "city",
+        "latitude",
+        "longitude",
+    ])
+
+    # year_month möglichst direkt aus date
+    lf = lf.with_columns([
+        pl.col("date").dt.strftime("%Y-%m").alias("year_month"),
+
+        # Hilfsspalten für spätere Filter
+        pl.col("post_code").cast(pl.Utf8).alias("post_code_str"),
+        pl.col("city").cast(pl.Utf8).str.to_lowercase().alias("city_lc"),
+        pl.col("brand")
+            .fill_null("")
+            .cast(pl.Utf8)
+            .str.to_lowercase()
+            .alias("brand_lc"),
+
+        # Teure Spalten vorab berechnen
+        pl.col("price")
+            .min()
+            .over(["station_id", "fuel_type", "date"])
+            .alias("daily_min"),
+    ])
+
+    lf = lf.with_columns([
+        (pl.col("price") - pl.col("daily_min")).alias("diff_to_min"),
+        (pl.col("price") == pl.col("daily_min"))
+            .cast(pl.UInt8)
+            .alias("is_daily_min"),
+    ])
+
+    # Optional: sinnvolle Spaltenreihenfolge
+    lf = lf.select([
+        "station_id",
+        "timestamp",
+        "date",
+        "year_month",
+        "hour",
+        "weekday",
+        "fuel_type",
+        "price",
+        "daily_min",
+        "diff_to_min",
+        "is_daily_min",
+        "price_changed",
+        "name",
+        "brand",
+        "brand_lc",
+        "street",
+        "house_number",
+        "post_code",
+        "post_code_str",
+        "city",
+        "city_lc",
+        "latitude",
+        "longitude",
+    ])
+
+    # Streaming Collect reduziert RAM-Druck
+    df = lf.collect(engine="streaming")
+
+    # Schreiben
+    df.write_parquet(
+        out_file,
+        compression=compression,
+        statistics=True,
+    )
+
+    print(f"Written: {out_file}")
+
+
+def enrich_station_price_observation_directory(
+    in_dir: str | Path,
+    out_dir: str | Path,
+    file_pattern: str = "station_price_observations_*.parquet",
+    skip_existing: bool = True,
+) -> None:
+    """
+    Verarbeitet alle passenden Parquet-Dateien in einem Ordner.
+    """
+    in_dir = Path(in_dir)
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    files = sorted(in_dir.glob(file_pattern))
+    if not files:
+        raise FileNotFoundError(f"No files found in {in_dir} matching {file_pattern}")
+
+    for in_file in files:
+        out_file = out_dir / in_file.name.replace(
+            "station_price_observations_",
+            "station_price_observations_enriched_",
+        )
+
+        if skip_existing and out_file.exists():
+            print(f"Skip (exists): {out_file}")
+            continue
+
+        print(f"Processing: {in_file.name}")
+        enrich_station_price_observation_file(in_file, out_file)
+
+
+def create_north_germany_web_subset(
+    in_file: str | Path,
+    out_file: str | Path,
+    keep_station_id: bool = False,
+    compression: str = "zstd",
+) -> None:
+    """
+    Erstellt aus einer enriched-Datei eine stark reduzierte Web-Datei
+    für Norddeutschland (PLZ beginnt mit 1 oder 2).
+
+    Behalten werden nur Spalten, die für die spätere Mean-basierte
+    Dashboard-Analyse wirklich nötig sind.
+
+    Wenn keep_station_id=False:
+        station_id wird entfernt, Datei wird kleiner,
+        aber eindeutige Stationszählung ist später nicht mehr exakt möglich.
+    """
+    in_file = Path(in_file)
+    out_file = Path(out_file)
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+
+    base_cols = [
+        "date",
+        "year_month",
+        "hour",
+        "weekday",
+        "fuel_type",
+        "price",
+        "daily_min",
+        "diff_to_min",
+        "is_daily_min",
+        "price_changed",
+        "brand",
+        "brand_lc",
+        "post_code_str",
+        "city",
+        "city_lc",
+    ]
+
+    if keep_station_id:
+        base_cols = ["station_id"] + base_cols
+
+    lf = (
+        pl.scan_parquet(in_file)
+        .filter(
+            pl.col("post_code_str").str.starts_with("1") |
+            pl.col("post_code_str").str.starts_with("2")
+        )
+        .select(base_cols)
+    )
+
+    df = lf.collect(engine="streaming")
+
+    df.write_parquet(
+        out_file,
+        compression=compression,
+        statistics=True,
+    )
+
+    print(f"Written: {out_file}")
+    print(f"Rows: {df.height:,}")
+    print(f"Columns: {df.width}")
+    print("Kept columns:", df.columns)
+
+
+if __name__ == "__main__":
+    create_north_germany_web_subset(
+        in_file=r"D:/data/derived/station_price_observations_enriched/station_price_observations_enriched_2026_02.parquet",
+        out_file=r"D:/data/derived/station_price_observations_web/station_price_observations_web_north_2026_02.parquet",
+        keep_station_id=True,
+    )
+
+"""
+if __name__ == "__main__":
+    enrich_station_price_observation_directory(
+        in_dir=r"D:/data/derived/station_price_observations",
+        out_dir=r"D:/data/derived/station_price_observations_enriched",
+        file_pattern="station_price_observations_*.parquet",
+        skip_existing=True,
+    )
+"""
 # ------------------------------
 # Execution
 # ------------------------------
-if __name__ == "__main__":
+#if __name__ == "__main__":
 
     # for year in range(2015, 2025):
     #     for month in range(1, 13):
@@ -513,4 +735,5 @@ if __name__ == "__main__":
     
     #combine_hourly_price_changes_all()
 
-    build_monthly_price_observations(2026, 2)
+    #build_monthly_price_observations(2026, 2)
+

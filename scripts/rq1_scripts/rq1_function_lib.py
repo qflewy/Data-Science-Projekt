@@ -197,14 +197,11 @@ def fuel_surface_dashboard(data_dir, stat="median", timezone="Europe/Berlin"):
 
 
 def tank_time_analysis_dashboard(
-    data_dir: str | Path = r"D:/data/derived/station_price_observations",
-    file_pattern: str = "station_price_observations_*.parquet",
+    data_dir: str | Path = r"D:/data/derived/station_price_observations_web",
+    file_pattern: str = "*.parquet",
 ):
     data_dir = Path(data_dir)
 
-    # ------------------------------------------------------------
-    # 1) Monatsdateien finden
-    # ------------------------------------------------------------
     files = sorted(data_dir.glob(file_pattern))
     month_pattern = re.compile(r"(\d{4})_(\d{2})")
 
@@ -220,9 +217,6 @@ def tank_time_analysis_dashboard(
 
     month_keys = sorted(month_files.keys())
 
-    # ------------------------------------------------------------
-    # 2) Widgets
-    # ------------------------------------------------------------
     month_slider = widgets.SelectionRangeSlider(
         options=month_keys,
         index=(0, len(month_keys) - 1),
@@ -265,86 +259,91 @@ def tank_time_analysis_dashboard(
 
     weekday_labels = ["Mon.", "Tue.", "Wed.", "Thu.", "Fri.", "Sat.", "Sun."]
 
-    # ------------------------------------------------------------
-    # load time period
-    # ------------------------------------------------------------
-    def load_period(start_month: str, end_month: str) -> pl.DataFrame:
+    def load_period_lazy(start_month: str, end_month: str) -> pl.LazyFrame | None:
         selected_months = [m for m in month_keys if start_month <= m <= end_month]
         selected_files = [month_files[m] for m in selected_months]
 
         if not selected_files:
-            return pl.DataFrame()
+            return None
 
-        lf = pl.concat([pl.scan_parquet(f) for f in selected_files])
+        lfs = [
+            pl.scan_parquet(f).select([
+                "station_id",
+                "hour",
+                "weekday",
+                "fuel_type",
+                "diff_to_min",
+                "is_daily_min",
+                "city_lc",
+                "brand_lc",
+                "post_code_str",
+            ])
+            for f in selected_files
+        ]
 
-        return lf.collect(engine="streaming")
+        return pl.concat(lfs)
 
-    # ------------------------------------------------------------
-    # 4) apply filters
-    # ------------------------------------------------------------
-    def apply_filters(
-        df: pl.DataFrame,
+    def apply_filters_lazy(
+        lf: pl.LazyFrame,
         fuel_type: str,
         city: str,
         brand: str,
         plz_prefix: str,
-    ) -> pl.DataFrame:
-        out = df.filter(pl.col("fuel_type") == fuel_type)
+    ) -> pl.LazyFrame:
+        out = lf.filter(pl.col("fuel_type") == fuel_type)
 
-        if city.strip():
-            out = out.filter(
-                pl.col("city")
-                .cast(pl.Utf8)
-                .str.to_lowercase()
-                .str.contains(city.strip().lower(), literal=True)
-            )
+        city_clean = city.strip().lower()
+        brand_clean = brand.strip().lower()
+        plz_clean = plz_prefix.strip()
 
-        if brand.strip():
-            out = out.filter(
-                pl.col("brand")
-                .fill_null("")
-                .cast(pl.Utf8)
-                .str.to_lowercase()
-                .str.contains(brand.strip().lower(), literal=True)
-            )
+        if city_clean:
+            out = out.filter(pl.col("city_lc").str.contains(city_clean, literal=True))
 
-        if plz_prefix.strip():
-            out = out.filter(
-                pl.col("post_code")
-                .cast(pl.Utf8)
-                .str.starts_with(plz_prefix.strip())
-            )
+        if brand_clean:
+            out = out.filter(pl.col("brand_lc").str.contains(brand_clean, literal=True))
+
+        if plz_clean:
+            out = out.filter(pl.col("post_code_str").str.starts_with(plz_clean))
 
         return out
 
-    # ------------------------------------------------------------
-    # 5) prepare analysis
-    # ------------------------------------------------------------
-    def prepare_analysis(df: pl.DataFrame) -> pl.DataFrame:
-        df = df.with_columns(
-            pl.col("price")
-            .min()
-            .over(["station_id", "fuel_type", "date"])
-            .alias("daily_min")
+    def compute_hour_stats(lf: pl.LazyFrame) -> pl.DataFrame:
+        return (
+            lf.group_by("hour")
+            .agg([
+                pl.mean("diff_to_min").alias("mean_diff"),
+                pl.median("diff_to_min").alias("median_diff"),
+                pl.mean("is_daily_min").alias("prob_min"),
+            ])
+            .sort("hour")
+            .collect(engine="streaming")
         )
 
-        # Abstand zum Tagesminimum
-        df = df.with_columns(
-            (pl.col("price") - pl.col("daily_min")).alias("diff_to_min")
+    def compute_heatmap_stats(lf: pl.LazyFrame) -> pl.DataFrame:
+        return (
+            lf.group_by(["weekday", "hour"])
+            .agg([
+                pl.mean("diff_to_min").alias("mean_diff"),
+                pl.median("diff_to_min").alias("median_diff"),
+            ])
+            .sort(["weekday", "hour"])
+            .collect(engine="streaming")
         )
 
-        # Exakt Tagesminimum?
-        df = df.with_columns(
-            (pl.col("price") == pl.col("daily_min")).cast(pl.Float64).alias("is_daily_min")
+    def compute_meta_stats(lf: pl.LazyFrame) -> dict:
+        meta = (
+            lf.select([
+                pl.len().alias("n_obs"),
+                pl.col("station_id").n_unique().alias("n_stations"),
+            ])
+            .collect(engine="streaming")
+            .row(0, named=True)
         )
+        return meta
 
-        return df
-
-    # ------------------------------------------------------------
-    # 6) Produce summary text
-    # ------------------------------------------------------------
     def build_summary_text(
-        df: pl.DataFrame,
+        hour_stats: pl.DataFrame,
+        meta: dict,
         start_month: str,
         end_month: str,
         fuel_type: str,
@@ -352,29 +351,23 @@ def tank_time_analysis_dashboard(
         brand: str,
         plz_prefix: str,
     ) -> str:
-        hour_stats = (
-            df.group_by("hour")
-            .agg([
-                pl.mean("diff_to_min").alias("mean_diff"),
-                pl.median("diff_to_min").alias("median_diff"),
-                pl.mean("is_daily_min").alias("prob_min"),
-            ])
-            .sort("hour")
-        )
+        if hour_stats.is_empty():
+            return "No data available."
 
         best_hour_row = hour_stats.sort("mean_diff").row(0, named=True)
         best_hour = int(best_hour_row["hour"])
         best_hour_ct = float(best_hour_row["mean_diff"]) * 100
         best_prob = float(best_hour_row["prob_min"]) * 100
 
-        evening = df.filter(pl.col("hour").is_between(18, 21, closed="both"))
-        morning = df.filter(pl.col("hour").is_between(6, 9, closed="both"))
+        evening = hour_stats.filter(pl.col("hour").is_between(18, 21, closed="both"))
+        morning = hour_stats.filter(pl.col("hour").is_between(6, 9, closed="both"))
 
-        evening_ct = float(evening.select(pl.mean("diff_to_min")).item()) * 100
-        morning_ct = float(morning.select(pl.mean("diff_to_min")).item()) * 100
+        evening_ct = float(evening.select(pl.mean("mean_diff")).item()) * 100 if evening.height > 0 else float("nan")
+        morning_ct = float(morning.select(pl.mean("mean_diff")).item()) * 100 if morning.height > 0 else float("nan")
         diff_ct = morning_ct - evening_ct
-        window_results = []
+
         hour_map = {row["hour"]: row["mean_diff"] for row in hour_stats.to_dicts()}
+        window_results = []
 
         for width in [2, 3, 4]:
             for start in range(0, 24 - width + 1):
@@ -391,7 +384,6 @@ def tank_time_analysis_dashboard(
         best_window = min(window_results, key=lambda x: x["avg_diff"])
         best_window_ct = best_window["avg_diff"] * 100
 
-        # Description of applied filters
         filters = [fuel_type]
         if city.strip():
             filters.append(f"city contains '{city.strip()}'")
@@ -402,9 +394,8 @@ def tank_time_analysis_dashboard(
 
         filter_text = ", ".join(filters)
 
-        # Zusatzinfos zu Beobachtungen
-        n_obs = df.height
-        n_stations = df.select(pl.col("station_id").n_unique()).item()
+        n_obs = int(meta["n_obs"])
+        n_stations = int(meta["n_stations"])
 
         return (
             f"**Time period:** {start_month} to {end_month}  \n"
@@ -421,20 +412,7 @@ def tank_time_analysis_dashboard(
             f"with average **{best_window_ct:.2f} ct/L above the daily minimum**."
         )
 
-    # ------------------------------------------------------------
-    # 7) Plots
-    # ------------------------------------------------------------
-    def make_hour_plot(df: pl.DataFrame, stat: str, title_suffix: str) -> go.Figure:
-        hour_stats = (
-            df.group_by("hour")
-            .agg([
-                pl.mean("diff_to_min").alias("mean_diff"),
-                pl.median("diff_to_min").alias("median_diff"),
-                pl.mean("is_daily_min").alias("prob_min"),
-            ])
-            .sort("hour")
-        )
-
+    def make_hour_plot(hour_stats: pl.DataFrame, stat: str, title_suffix: str) -> go.Figure:
         value_col = "mean_diff" if stat == "mean" else "median_diff"
 
         fig = go.Figure()
@@ -454,20 +432,11 @@ def tank_time_analysis_dashboard(
         )
         return fig
 
-    def make_heatmap(df: pl.DataFrame, stat: str, title_suffix: str) -> go.Figure:
-        agg = (
-            df.group_by(["weekday", "hour"])
-            .agg([
-                pl.mean("diff_to_min").alias("mean_diff"),
-                pl.median("diff_to_min").alias("median_diff"),
-            ])
-            .sort(["weekday", "hour"])
-        )
-
+    def make_heatmap(heat_stats: pl.DataFrame, stat: str, title_suffix: str) -> go.Figure:
         value_col = "mean_diff" if stat == "mean" else "median_diff"
 
         heat = (
-            agg.pivot(
+            heat_stats.pivot(
                 values=value_col,
                 index="weekday",
                 on="hour",
@@ -496,9 +465,6 @@ def tank_time_analysis_dashboard(
         )
         return fig
 
-    # ------------------------------------------------------------
-    # 8) Render
-    # ------------------------------------------------------------
     def render(change=None):
         with output:
             clear_output(wait=True)
@@ -510,19 +476,20 @@ def tank_time_analysis_dashboard(
             brand = brand_text.value
             plz_prefix = plz_text.value
 
-            df = load_period(start_month, end_month)
-
-            if df.is_empty():
+            lf = load_period_lazy(start_month, end_month)
+            if lf is None:
                 print("No data found.")
                 return
 
-            df = apply_filters(df, fuel_type, city, brand, plz_prefix)
+            lf = apply_filters_lazy(lf, fuel_type, city, brand, plz_prefix)
 
-            if df.is_empty():
+            meta = compute_meta_stats(lf)
+            if meta["n_obs"] == 0:
                 print("No data after applying filters.")
                 return
 
-            df = prepare_analysis(df)
+            hour_stats = compute_hour_stats(lf)
+            heat_stats = compute_heatmap_stats(lf)
 
             filter_parts = [fuel_type]
             if city.strip():
@@ -534,14 +501,15 @@ def tank_time_analysis_dashboard(
 
             title_suffix = " | " + ", ".join(filter_parts)
 
-            fig1 = make_hour_plot(df, stat, title_suffix)
+            fig1 = make_hour_plot(hour_stats, stat, title_suffix)
             fig1.show()
 
-            fig2 = make_heatmap(df, stat, title_suffix)
+            fig2 = make_heatmap(heat_stats, stat, title_suffix)
             fig2.show()
 
             summary = build_summary_text(
-                df=df,
+                hour_stats=hour_stats,
+                meta=meta,
                 start_month=start_month,
                 end_month=end_month,
                 fuel_type=fuel_type,
@@ -551,7 +519,6 @@ def tank_time_analysis_dashboard(
             )
             display(Markdown(summary))
 
-    # Widget-Events
     month_slider.observe(render, names="value")
     fuel_dropdown.observe(render, names="value")
     stat_dropdown.observe(render, names="value")
