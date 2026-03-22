@@ -34,7 +34,7 @@ def create_station_regions(input_path:Path, output_path:Path):
             file_path = output_path / f"uuids_region_{current_region}.csv"
 
             region.select("uuid").write_csv(file_path)
-        except Exception as e:
+        except Exception:
             #ignore the missing post codes.
             pass  
                     
