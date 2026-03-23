@@ -8,7 +8,7 @@ output_dir = Path("d:/Tankdaten/rq_brand_vs_free")
 
 brands = ["ARAL", "SHELL", "JET", "TOTAL", "ESSO", "AVIA", "TOTAL ENERGIES", "HEM", "HOYER", "ORLEN", "Q1", "ORLEN", "STAR", "RAIFFEISEN", "AGIP", "OMV", "OIL!", "WESTFALEN", "ENI"]
 
-# Known brand variants in the data → mapped to their canonical brand name above.
+# Known brand variants in the data: mapped to their canonical brand name above.
 brand_aliasses: dict[str, str] = {
     "AVIA SCHMIDT":                    "AVIA",
     "AVIA XPRESS":                     "AVIA",
