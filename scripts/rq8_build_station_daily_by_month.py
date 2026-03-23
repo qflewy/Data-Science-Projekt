@@ -1,10 +1,11 @@
-#modified from build_station_daily_last_by_month.py to calculate mean and median instead of last price, with the help of Copilot
+# modified from build_station_daily_last_by_month.py to calculate mean and
+# median instead of last price. Modified with the help of Copilot.
 
 from pathlib import Path
 import polars as pl
 
 
-def build_station_daily_by_month(data_root,derived_root, start_year,end_year) -> None:
+def build_station_daily_by_month(data_root, derived_root, start_year, end_year) -> None:
     """Generate daily mean/median price files for each station by month.
 
     Parameters
@@ -73,7 +74,8 @@ def build_station_daily_by_month(data_root,derived_root, start_year,end_year) ->
                 ])
             )
 
-            # Sorting by month, station and day, then taking the mean and median price of each day for each station
+            # Sorting by month, station and day, then taking the mean and median 
+            # price of each day for each station
             # (calculated from all prices of the day for each station).
             station_daily_month = (
                 lf.sort("dt")
