@@ -1,11 +1,12 @@
+from math import atan2, cos, radians, sin, sqrt
 from pathlib import Path
+
 import numpy as np
-from sklearn.cluster import DBSCAN
-import polars as pl
+import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import pandas as pd
-from math import radians, sin, cos, sqrt, atan2
+import polars as pl
+from sklearn.cluster import DBSCAN
 
 
 # created with ChatGPT:
@@ -16,11 +17,8 @@ def haversine_metric(p1, p2):
     R = 6371  # Earth radius in km
     dlat = radians(p2[0] - p1[0])
     dlon = radians(p2[1] - p1[1])
-    a = (
-        sin(dlat / 2) ** 2
-        + cos(radians(p1[0])) * cos(radians(p2[0])) * sin(dlon / 2) ** 2
-    )
-    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    a = sin(dlat/2)**2 + cos(radians(p1[0])) * cos(radians(p2[0])) * sin(dlon/2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1-a))
     return R * c
 
 
@@ -28,9 +26,7 @@ def get_csv_data(file_path):
     """Read CSV file into DataFrame.
     i: str file_path
     o: DataFrame"""
-    df = pl.read_csv(
-        file_path, null_values=["nicht", "NA", "N/A", "", "Nicht"]
-    )
+    df = pl.read_csv(file_path, null_values=["nicht", "NA", "N/A", "", "Nicht"])
     # print(df)
     return df
 
@@ -50,8 +46,8 @@ def perform_dbscan(data, eps, min_samples):
 
 
 def plot_clusters(data, labels):
-    """Plot clusters on maü, green dots are all clustered stations red
-    dot all unclustered.
+    """Plot clusters on map, green dots
+    are all clustered stations red dot all unclustered.
     i: DataFrame data, array labels
     o: Figure"""
     data = data.with_columns(pl.Series("cluster", labels))
@@ -67,15 +63,14 @@ def plot_clusters(data, labels):
         color_discrete_map={"noise": "red", "clustered": "green"},
         hover_name="uuid",
         zoom=5,
-        center={"lat": 51.1657, "lon": 10.4515},
         # These are the coordinates for the center of Germany.
+        center={"lat": 51.1657, "lon": 10.4515},
         height=700
     )
 
     fig.update_layout(
         mapbox=dict(
-            # Carto Positron proved stable and less likely to cause errors
-            # than open-street-map.
+            # Carto Positron proved less likely to cause errors than open-street-map.
             style="carto-positron",
             center=dict(lat=51.1657, lon=10.4515),
             zoom=5.4,
@@ -116,7 +111,7 @@ def join_labels_and_group(daily_prices, cluster_csv, cluster_name):
     df_joined = daily_prices.join(
         clusters,
         left_on="station_uuid",
-        right_on="uuid",
+        right_on="uuid", 
         how="left"
     )
 
@@ -141,8 +136,7 @@ def plot_cluster_prices(
         motorway_df=None,
         title=None):
     """Plot mean and median prices per group.
-    i: list parquet_files, str cluster_csv, str fuel, DataFrame
-    motorway_df, str title
+    i: list parquet_files, str cluster_csv, str fuel, DataFrame motorway_df, str title
     o: Figure"""
 
     mean_col = f"{fuel}_mean"
@@ -152,7 +146,7 @@ def plot_cluster_prices(
         [pl.scan_parquet(f) for f in parquet_files]
     ).select(["station_uuid", "day", mean_col, median_col])
 
-    # optional Autobahnfilter
+    # Optional filter for Autobahn-stations.
     if motorway_df is not None:
 
         daily_prices = daily_prices.join(
@@ -221,7 +215,7 @@ def plot_cluster_prices(
     return fig
 
 
-def analyse_motorway_clusters(cluster_csv, motorway_df):
+def analyse_motorway_clusters(cluster_csv, motorway_df):   
     """Analyse motorway stations in clusters, only used for
     displaying the the distribution via text for debugging purposes.
     i: str cluster_csv, DataFrame motorway_df
@@ -235,12 +229,10 @@ def analyse_motorway_clusters(cluster_csv, motorway_df):
         right_on="station_uuid",
         how="inner"
     )
-
+    
     total_motorway = motorway_clusters.height
     motorway_noise = motorway_clusters.filter(pl.col("cluster") == -1).height
-    motorway_clustered = motorway_clusters.filter(
-        pl.col("cluster") != -1
-    ).height
+    motorway_clustered = motorway_clusters.filter(pl.col("cluster") != -1).height
 
     print("Cluster file:", cluster_csv)
     print("Motorway stations total:", total_motorway)
@@ -257,8 +249,7 @@ def plot_cluster_difference(
         motorway_df=None,
         title=None):
     """Plot price difference between groups.
-    i: list parquet_files, str cluster_csv, str fuel, DataFrame
-    motorway_df, str title
+    i: list parquet_files, str cluster_csv, str fuel, DataFrame motorway_df, str title
     o: Figure, DataFrame"""
 
     mean_col = f"{fuel}_mean"
@@ -274,7 +265,7 @@ def plot_cluster_difference(
             how="anti"
         )
 
-    clusters = pl.scan_csv(cluster_csv).rename({"cluster": "cluster_label"})
+    clusters = pl.scan_csv(cluster_csv).rename({"cluster":"cluster_label"})
     df = daily_prices.join(
         clusters,
         left_on="station_uuid",
@@ -317,9 +308,9 @@ def plot_cluster_difference(
 
     fig = go.Figure()
     fig.add_trace(
-        go.Scatter(x=diff_df["day"],
-                   y=diff_df["mean_diff"], mode="lines",
-                   name="Mean Difference",
+        go.Scatter(x=diff_df["day"], 
+                   y=diff_df["mean_diff"], mode="lines", 
+                   name="Mean Difference", 
                    line=dict(color="blue"))
                    )
 
@@ -328,10 +319,7 @@ def plot_cluster_difference(
                              line=dict(color="red", dash="dot")))
 
     fig.update_layout(
-        title=(
-            title
-            or f"{fuel.capitalize()} Price Difference (Cluster - Noise)"
-        ),
+        title=title or f"{fuel.capitalize()} Price Difference (Cluster - Noise)",
         xaxis_title="Date",
         yaxis_title=f"{fuel.capitalize()} Price Difference (€)",
         template="plotly_white",
@@ -366,8 +354,8 @@ def compute_cluster_counts_over_time(daily_prices, cluster_csv):
 
     counts = (
         df.group_by(["day", "group"])
-        .agg(pl.len().alias("count"))
-        .collect(streaming=True)
+        .agg(pl.len().alias("count")) 
+        .collect(streaming=True) 
         .pivot(on="group", index="day", values="count")
         .fill_null(0)
         .with_columns([
@@ -518,10 +506,7 @@ def plot_yearly_boxplot(diff_df, cluster_name, fuel):
         ))
 
     fig.update_layout(
-        title=(
-            f"{fuel.capitalize()} Mean Price Difference by Year "
-            f"({cluster_name})"
-        ),
+        title=f"{fuel.capitalize()} Mean Price Difference by Year ({cluster_name})",
         xaxis_title="Year",
         yaxis_title="Price Difference (€) (Cluster - Noise)",
         template="plotly_white",
@@ -532,7 +517,7 @@ def plot_yearly_boxplot(diff_df, cluster_name, fuel):
     return fig
 
 
-# Copied from another script, originally created with the help of ChatGPT.
+# Copied from another script, originally created with the help of ChatGPT. 
 def save_png(fig, img_name: Path, legend: bool = False):
     """Save figure as PNG.
     i: Figure fig, Path img_name, bool legend
@@ -544,14 +529,16 @@ def save_png(fig, img_name: Path, legend: bool = False):
     fig = fig.full_figure_for_development(warn=False)
     fig.update_layout(
         autosize=False,
-        width=px_w / 2,
+        width=px_w/2,
         height=px_h,
         font=dict(size=44),
-        title=dict(font=dict(size=100),
-        y=.98,
-        x=.5,
-        xanchor="center",
-        yanchor="top")
+        title=dict(
+            font=dict(size=100),
+            y=.98,
+            x=.5,
+            xanchor="center",
+            yanchor="top"
+            )
     )
     if legend:
         fig.update_layout(
@@ -567,10 +554,12 @@ def save_png(fig, img_name: Path, legend: bool = False):
 
     fig.update_xaxes(tickfont=dict(size=90), title_font=dict(size=80))
     fig.update_yaxes(tickfont=dict(size=90), title_font=dict(size=80))
-    img_path = Path(r'C:\Users\Bjarne\Desktop\Uni\Data Science Projekt\images_for_poster')
+    img_path = Path(
+        r'C:\Users\Bjarne\Desktop\Uni\Data Science Projekt\images_for_poster'
+        )
 
     final_file = img_path / Path(img_name).name
-   
+
     fig.write_image(str(final_file),
                     width=px_w,
                     height=px_h,
