@@ -1,21 +1,15 @@
-"""
-Research Question 4: Price differences brand gas stations vs. free gas stations.
-"""
 import polars as pl
 from pathlib import Path
 
-# ── Config ───────────────────────────────────────────────────────────────────
-
-STATIONS_PARQUET = Path("d:/Tankdaten/stations/stations/stations.parquet")
-AUTOBAHN_CSV = Path("d:/Tankdaten/stations/stations/autobahn_stations.csv")
-PRICES_DIR = Path("d:/Tankdaten/prices_parquet")
-OUTPUT_DIR = Path("d:/Tankdaten/rq_brand_vs_free")
+stations_parquet = Path("d:/Tankdaten/stations/stations/stations.parquet")
+autobahn_csv = Path("d:/Tankdaten/stations/stations/autobahn_stations.csv")
+prices_dir = Path("d:/Tankdaten/prices_parquet")
+output_dir = Path("d:/Tankdaten/rq_brand_vs_free")
 
 brands = ["ARAL", "SHELL", "JET", "TOTAL", "ESSO", "AVIA", "TOTAL ENERGIES", "HEM", "HOYER", "ORLEN", "Q1", "ORLEN", "STAR", "RAIFFEISEN", "AGIP", "OMV", "OIL!", "WESTFALEN", "ENI"]
 
-# Known brand variants in the data → mapped to their canonical brand name above.
-# HEMPELMANN / HEMSAER are deliberately excluded (not HEM-branded stations).
-BRAND_ALIASES: dict[str, str] = {
+# Known brand variants in the data: mapped to their canonical brand name above.
+brand_aliasses: dict[str, str] = {
     "AVIA SCHMIDT":                    "AVIA",
     "AVIA XPRESS":                     "AVIA",
     "AVIA XPRESS AUTOMATENTANKSTELLE": "AVIA",
@@ -25,8 +19,6 @@ BRAND_ALIASES: dict[str, str] = {
     "WESTFALEN TANKSTELLE":            "WESTFALEN",
     "WESTFALEN-TANKSTELLE":            "WESTFALEN",
 }
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def load_and_classify_stations(parquet_path: Path, brands, autobahn_csv: Path) -> pl.DataFrame:
     """
@@ -38,9 +30,7 @@ def load_and_classify_stations(parquet_path: Path, brands, autobahn_csv: Path) -
 
     # Exclude highway stations
     autobahn_uuids = pl.read_csv(autobahn_csv, columns=["uuid"])["uuid"]
-    n_before = df.height
     df = df.filter(~pl.col("uuid").is_in(autobahn_uuids))
-    print(f"Excluded {n_before - df.height} highway stations ({len(autobahn_uuids)} in autobahn list)")
 
     # Normalize: fold to uppercase
     df = df.with_columns(
@@ -53,7 +43,7 @@ def load_and_classify_stations(parquet_path: Path, brands, autobahn_csv: Path) -
     # Apply aliases: e.g. "AVIA XPRESS" → "AVIA"
     df = df.with_columns(
         pl.col("brand_normalized")
-        .replace(BRAND_ALIASES)
+        .replace(brand_aliasses)
         .alias("brand_normalized")
     )
 
@@ -68,22 +58,6 @@ def load_and_classify_stations(parquet_path: Path, brands, autobahn_csv: Path) -
         .alias("station_type")
     )
 
-    print(f"\nStation classification:")
-    print(
-        df.group_by("station_type")
-        .agg(pl.len().alias("count"))
-        .sort("station_type")
-    )
-
-    n = 20
-    print(f"\nTop {n} brand stations by size:")
-    print(
-        df.filter(pl.col("station_type") == "brand_station")
-        .group_by("brand_normalized")
-        .agg(pl.len().alias("count"))
-        .sort("count", descending=True)
-        .head(n)
-    )
     return df.select(["uuid", "brand_normalized", "station_type"])
 
 
@@ -152,10 +126,8 @@ def compute_price_stats(prices_dir: Path, station_classification: pl.DataFrame, 
     partials_type:  list[pl.DataFrame] = []
     partials_brand: list[pl.DataFrame] = []
 
-    for i, pf in enumerate(parquet_files, 1):
-        print(f"  [{i}/{len(parquet_files)}] {pf.name}", end=" ... ", flush=True)
-
-        # Load one month — only the needed columns
+    for pf in parquet_files:
+        # Load only the needed columns
         df = pl.read_parquet(pf, columns=["station_uuid", "date", "diesel", "e5", "e10"])
 
         # Join with station classification (small lookup table, stays in RAM)
@@ -181,21 +153,17 @@ def compute_price_stats(prices_dir: Path, station_classification: pl.DataFrame, 
     df_stats = _combine_and_finalize(partials_type, ["station_type", "year"])
     out_file = output_dir / "brand_vs_free_yearly_stats.csv"
     df_stats.write_csv(out_file)
-    print(f"Saved yearly stats → {out_file}")
-    print(df_stats)
+    print(f"Saved yearly stats: {out_file}")
+    print(df_stats.head(10))
 
     df_brands = _combine_and_finalize(partials_brand, ["brand_normalized", "year"])
     brand_file = output_dir / "per_brand_yearly_stats.csv"
     df_brands.write_csv(brand_file)
-    print(f"Saved per-brand stats → {brand_file}")
-    print(df_brands.head(20))
+    print(f"Saved per-brand stats: {brand_file}")
+    print(df_brands.head(10))
 
-
-# ── Main ──────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    print("=== Brand vs. Free Gas Stations (Germany) ===")
-
-    station_df = load_and_classify_stations(STATIONS_PARQUET, brands, AUTOBAHN_CSV)
-    compute_price_stats(PRICES_DIR, station_df, OUTPUT_DIR)
+    station_df = load_and_classify_stations(stations_parquet, brands, autobahn_csv)
+    compute_price_stats(prices_dir, station_df, output_dir)
     print("\nDone.")
