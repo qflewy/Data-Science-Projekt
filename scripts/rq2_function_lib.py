@@ -1,18 +1,19 @@
 from pathlib import Path
-from typing import Literal, Optional
-import pandas as pd
+from typing import Literal
+
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 import seaborn as sns
 import yfinance as yf
-import numpy as np
 
-# path for folder:
-DEFAULT_DERIVED_DIR = Path(r"D:\data\derived\national_daily_last") # +++Path+++
+# Path for folder:
+DEFAULT_DERIVED_DIR = Path(r"D:\data\derived\national_daily_last")
 
 StatType = Literal["mean", "median"]
 
-def plot_national_fuel_prices_year(year: int, stat: str = "mean"):
 
+def plot_national_fuel_prices_year(year: int, stat: str = "mean"):
     if stat not in ("mean", "median"):
         raise ValueError("stat must be 'mean' or 'median'")
 
@@ -27,11 +28,11 @@ def plot_national_fuel_prices_year(year: int, stat: str = "mean"):
         id_vars="day",
         value_vars=value_cols,
         var_name="fuel_type",
-        value_name="price"
+        value_name="price",
     )
     df_long["fuel_type"] = df_long["fuel_type"].str.replace(f"_{stat}_last", "")
 
-    plt.figure(figsize=(12,6))
+    plt.figure(figsize=(12, 6))
     sns.lineplot(data=df_long, x="day", y="price", hue="fuel_type")
     plt.title(f"National fuel prices ({stat}) – {year}")
     plt.xlabel("day")
@@ -40,9 +41,7 @@ def plot_national_fuel_prices_year(year: int, stat: str = "mean"):
     plt.show()
 
 
-
-def load_brent(start: str, end: str, interval: str = "1d",) -> pd.DataFrame:
-
+def load_brent(start: str, end: str, interval: str = "1d") -> pd.DataFrame:
     if interval not in ("1d", "1h"):
         raise ValueError("interval must be '1d' or '1h'")
 
@@ -51,7 +50,8 @@ def load_brent(start: str, end: str, interval: str = "1d",) -> pd.DataFrame:
 
     if df is None or df.empty:
         raise RuntimeError(
-            f"No data returned for Brent ({ticker}) with start={start}, end={end}, interval={interval}. "
+            f"No data returned for Brent ({ticker}) with start={start}, end={end}, "
+            f"interval={interval}. "
             "Yahoo may limit the lookback for intraday intervals (e.g., 1h)."
         )
     # Reset index to column; name may be 'Date' or 'Datetime' depending on interval
@@ -83,7 +83,7 @@ def load_brent(start: str, end: str, interval: str = "1d",) -> pd.DataFrame:
         out.sort_values("time"),
         fx.sort_values("time"),
         on="time",
-        direction="backward"
+        direction="backward",
     )
     merged["eurusd"] = merged["eurusd"].ffill().bfill()
     # ---------------------------------------------------
@@ -95,27 +95,26 @@ def load_brent(start: str, end: str, interval: str = "1d",) -> pd.DataFrame:
     return out
 
 
-
 def set_plot_style():
-
     import matplotlib.pyplot as plt
     import seaborn as sns
 
     sns.set_theme(style="darkgrid")
 
-    plt.rcParams.update({
-        "figure.facecolor": "#1e1e1e",
-        "axes.facecolor": "#252526",
-        "axes.edgecolor": "#cccccc",
-        "axes.labelcolor": "#cccccc",
-        "text.color": "#cccccc",
-        "xtick.color": "#cccccc",
-        "ytick.color": "#cccccc",
-        "grid.color": "#444444",
-        "grid.alpha": 0.4,
-        "axes.titlecolor": "#ffffff",
-    })
-
+    plt.rcParams.update(
+        {
+            "figure.facecolor": "#1e1e1e",
+            "axes.facecolor": "#252526",
+            "axes.edgecolor": "#cccccc",
+            "axes.labelcolor": "#cccccc",
+            "text.color": "#cccccc",
+            "xtick.color": "#cccccc",
+            "ytick.color": "#cccccc",
+            "grid.color": "#444444",
+            "grid.alpha": 0.4,
+            "axes.titlecolor": "#ffffff",
+        }
+    )
 
 
 def load_merge_year(year: int, fuel_type: str, interval: str = "1d") -> pd.DataFrame:
@@ -123,7 +122,7 @@ def load_merge_year(year: int, fuel_type: str, interval: str = "1d") -> pd.DataF
     Load one year of national fuel data + Brent oil, merge on day, forward-fill oil.
     Returns columns: day, fuel_price, oil_close
     """
-    oil = load_brent(f"{year}-01-01", f"{year+1}-01-01", interval=interval)
+    oil = load_brent(f"{year}-01-01", f"{year + 1}-01-01", interval=interval)
     fuel_path = DEFAULT_DERIVED_DIR / f"national_daily_last_{year}.csv"
     fuel = pd.read_csv(fuel_path)
 
@@ -151,7 +150,7 @@ def add_returns_and_lags(df: pd.DataFrame, K_LAG: int) -> pd.DataFrame:
     out = df.copy()
 
     out["r_fuel"] = np.log(out["fuel_price"]).diff()
-    out["r_oil"]  = np.log(out["oil_close"]).diff()
+    out["r_oil"] = np.log(out["oil_close"]).diff()
 
     out = out.dropna(subset=["r_fuel", "r_oil"]).reset_index(drop=True)
 
@@ -174,7 +173,10 @@ def compute_ccf_from_prepared(prep: pd.DataFrame, K_LAG: int) -> pd.Series:
     lag_cols = [f"r_oil_lag{k}" for k in range(K_LAG + 1)]
     return prep[lag_cols].corrwith(prep["r_fuel"])
 
-def compute_ccf_year(year: int, fuel_type: str = "e5_mean_last", K_LAG: int = 50) -> pd.Series:
+
+def compute_ccf_year(
+    year: int, fuel_type: str = "e5_mean_last", K_LAG: int = 50
+) -> pd.Series:
     merged = load_merge_year(year, fuel_type=fuel_type, interval="1d")
     prep = add_returns_and_lags(merged, K_LAG=K_LAG)
     corr = compute_ccf_from_prepared(prep, K_LAG=K_LAG)

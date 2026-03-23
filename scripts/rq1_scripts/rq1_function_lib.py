@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
+
+import ipywidgets as widgets
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-import ipywidgets as widgets
-import re
 import polars as pl
-from IPython.display import display, Markdown, clear_output
+from IPython.display import Markdown, clear_output, display
 
 
 def fuel_surface_dashboard(data_dir, stat="median", timezone="Europe/Berlin"):
+    """Create an interactive 3D weekly fuel-price surface dashboard by region."""
     data_dir = Path(data_dir)
 
     region_files = {
@@ -22,17 +24,15 @@ def fuel_surface_dashboard(data_dir, stat="median", timezone="Europe/Berlin"):
     weekday_labels = ["Mon.", "Tue.", "Wed.", "Thu.", "Fri.", "Sat.", "Sun."]
 
     def load_region(region):
+        """Load one region file and add localized timestamp and week columns."""
         df = pd.read_csv(region_files[region])
         df["timestamp_utc"] = pd.to_datetime(df["timestamp_utc"], utc=True)
-        df["timestamp"] = (
-            df["timestamp_utc"]
-            .dt.tz_convert(timezone)
-            .dt.tz_localize(None)
-        )
+        df["timestamp"] = df["timestamp_utc"].dt.tz_convert(timezone).dt.tz_localize(None)
         df["week"] = df["timestamp"].dt.to_period("W").dt.start_time
         return df
 
     def build_matrix(df, fuel, period):
+        """Build price and hover matrices and compute the minimum point for one week."""
         col = f"{fuel}_{stat}"
 
         df = df[df["week"] == period].copy()
@@ -111,9 +111,9 @@ def fuel_surface_dashboard(data_dir, stat="median", timezone="Europe/Berlin"):
     fig = go.FigureWidget()
     fig.add_trace(
         go.Surface(
-            x=list(range(7)),          # weekday
-            y=list(range(24)),         # hour
-            z=z,                       # shape (24,7) = [hour, weekday]
+            x=list(range(7)),  # weekday
+            y=list(range(24)),  # hour
+            z=z,  # shape (24,7) = [hour, weekday]
             text=hover,
             hovertemplate="%{text}<extra></extra>",
             colorbar=dict(title="Price"),
@@ -152,6 +152,7 @@ def fuel_surface_dashboard(data_dir, stat="median", timezone="Europe/Berlin"):
     )
 
     def update(*args):
+        """Refresh surface data and minimum marker after widget changes."""
         df = load_region(region_dd.value)
 
         weeks_new = sorted(df["week"].unique())
@@ -169,12 +170,14 @@ def fuel_surface_dashboard(data_dir, stat="median", timezone="Europe/Berlin"):
                 fig.data[1].x = [min_pos["weekday"]]
                 fig.data[1].y = [min_pos["hour"]]
                 fig.data[1].z = [min_pos["price"] - 1e-6]
-                fig.data[1].text = [[
-                    f"cheapest point<br>"
-                    f"Week-day: {weekday_labels[min_pos['weekday']]}<br>"
-                    f"Hour: {min_pos['hour']:02d}:00<br>"
-                    f"Price: {min_pos['price']:.3f}"
-                ]]
+                fig.data[1].text = [
+                    [
+                        f"cheapest point<br>"
+                        f"Week-day: {weekday_labels[min_pos['weekday']]}<br>"
+                        f"Hour: {min_pos['hour']:02d}:00<br>"
+                        f"Price: {min_pos['price']:.3f}"
+                    ]
+                ]
             else:
                 fig.data[1].x = []
                 fig.data[1].y = []
@@ -185,21 +188,19 @@ def fuel_surface_dashboard(data_dir, stat="median", timezone="Europe/Berlin"):
     fuel_dd.observe(update, names="value")
     slider.observe(update, names="value")
 
-    ui = widgets.VBox([
-        widgets.HBox([region_dd, fuel_dd]),
-        slider,
-        fig
-    ])
+    ui = widgets.VBox([widgets.HBox([region_dd, fuel_dd]), slider, fig])
     return ui
 
 
 # ----------------------------------------------------------
 
-
+# The following function developed by a lot of trial and error and therefore also by the help of AI
+# AI here was primarly used for creating the main "skeleton" of the function and to get the interaface running
 def tank_time_analysis_dashboard(
     data_dir: str | Path = r"D:/data/derived/station_price_observations_web",
     file_pattern: str = "*.parquet",
 ):
+    """Render an interactive dashboard for hourly refueling-time analysis."""
     data_dir = Path(data_dir)
 
     files = sorted(data_dir.glob(file_pattern))
@@ -260,6 +261,7 @@ def tank_time_analysis_dashboard(
     weekday_labels = ["Mon.", "Tue.", "Wed.", "Thu.", "Fri.", "Sat.", "Sun."]
 
     def load_period_lazy(start_month: str, end_month: str) -> pl.LazyFrame | None:
+        """Load selected months as one lazy Polars frame."""
         selected_months = [m for m in month_keys if start_month <= m <= end_month]
         selected_files = [month_files[m] for m in selected_months]
 
@@ -267,17 +269,19 @@ def tank_time_analysis_dashboard(
             return None
 
         lfs = [
-            pl.scan_parquet(f).select([
-                "station_id",
-                "hour",
-                "weekday",
-                "fuel_type",
-                "diff_to_min",
-                "is_daily_min",
-                "city_lc",
-                "brand_lc",
-                "post_code_str",
-            ])
+            pl.scan_parquet(f).select(
+                [
+                    "station_id",
+                    "hour",
+                    "weekday",
+                    "fuel_type",
+                    "diff_to_min",
+                    "is_daily_min",
+                    "city_lc",
+                    "brand_lc",
+                    "post_code_str",
+                ]
+            )
             for f in selected_files
         ]
 
@@ -290,6 +294,7 @@ def tank_time_analysis_dashboard(
         brand: str,
         plz_prefix: str,
     ) -> pl.LazyFrame:
+        """Apply fuel, city, brand, and postcode-prefix filters to the lazy frame."""
         out = lf.filter(pl.col("fuel_type") == fuel_type)
 
         city_clean = city.strip().lower()
@@ -308,34 +313,43 @@ def tank_time_analysis_dashboard(
         return out
 
     def compute_hour_stats(lf: pl.LazyFrame) -> pl.DataFrame:
+        """Aggregate hourly mean/median distance to minimum and minimum-hit probability."""
         return (
             lf.group_by("hour")
-            .agg([
-                pl.mean("diff_to_min").alias("mean_diff"),
-                pl.median("diff_to_min").alias("median_diff"),
-                pl.mean("is_daily_min").alias("prob_min"),
-            ])
+            .agg(
+                [
+                    pl.mean("diff_to_min").alias("mean_diff"),
+                    pl.median("diff_to_min").alias("median_diff"),
+                    pl.mean("is_daily_min").alias("prob_min"),
+                ]
+            )
             .sort("hour")
             .collect(engine="streaming")
         )
 
     def compute_heatmap_stats(lf: pl.LazyFrame) -> pl.DataFrame:
+        """Aggregate weekday-hour statistics for heatmap rendering."""
         return (
             lf.group_by(["weekday", "hour"])
-            .agg([
-                pl.mean("diff_to_min").alias("mean_diff"),
-                pl.median("diff_to_min").alias("median_diff"),
-            ])
+            .agg(
+                [
+                    pl.mean("diff_to_min").alias("mean_diff"),
+                    pl.median("diff_to_min").alias("median_diff"),
+                ]
+            )
             .sort(["weekday", "hour"])
             .collect(engine="streaming")
         )
 
     def compute_meta_stats(lf: pl.LazyFrame) -> dict:
+        """Compute overall observation and unique-station counts."""
         meta = (
-            lf.select([
-                pl.len().alias("n_obs"),
-                pl.col("station_id").n_unique().alias("n_stations"),
-            ])
+            lf.select(
+                [
+                    pl.len().alias("n_obs"),
+                    pl.col("station_id").n_unique().alias("n_stations"),
+                ]
+            )
             .collect(engine="streaming")
             .row(0, named=True)
         )
@@ -351,6 +365,7 @@ def tank_time_analysis_dashboard(
         brand: str,
         plz_prefix: str,
     ) -> str:
+        """Build a markdown summary with key refueling-time insights."""
         if hour_stats.is_empty():
             return "No data available."
 
@@ -362,8 +377,16 @@ def tank_time_analysis_dashboard(
         evening = hour_stats.filter(pl.col("hour").is_between(18, 21, closed="both"))
         morning = hour_stats.filter(pl.col("hour").is_between(6, 9, closed="both"))
 
-        evening_ct = float(evening.select(pl.mean("mean_diff")).item()) * 100 if evening.height > 0 else float("nan")
-        morning_ct = float(morning.select(pl.mean("mean_diff")).item()) * 100 if morning.height > 0 else float("nan")
+        evening_ct = (
+            float(evening.select(pl.mean("mean_diff")).item()) * 100
+            if evening.height > 0
+            else float("nan")
+        )
+        morning_ct = (
+            float(morning.select(pl.mean("mean_diff")).item()) * 100
+            if morning.height > 0
+            else float("nan")
+        )
         diff_ct = morning_ct - evening_ct
 
         hour_map = {row["hour"]: row["mean_diff"] for row in hour_stats.to_dicts()}
@@ -374,12 +397,14 @@ def tank_time_analysis_dashboard(
                 vals = [hour_map.get(h) for h in range(start, start + width)]
                 if all(v is not None for v in vals):
                     avg = sum(vals) / width
-                    window_results.append({
-                        "width": width,
-                        "start": start,
-                        "end": start + width - 1,
-                        "avg_diff": avg,
-                    })
+                    window_results.append(
+                        {
+                            "width": width,
+                            "start": start,
+                            "end": start + width - 1,
+                            "avg_diff": avg,
+                        }
+                    )
 
         best_window = min(window_results, key=lambda x: x["avg_diff"])
         best_window_ct = best_window["avg_diff"] * 100
@@ -413,6 +438,7 @@ def tank_time_analysis_dashboard(
         )
 
     def make_hour_plot(hour_stats: pl.DataFrame, stat: str, title_suffix: str) -> go.Figure:
+        """Create the hourly line chart for distance-to-daily-minimum values."""
         value_col = "mean_diff" if stat == "mean" else "median_diff"
 
         fig = go.Figure()
@@ -433,6 +459,7 @@ def tank_time_analysis_dashboard(
         return fig
 
     def make_heatmap(heat_stats: pl.DataFrame, stat: str, title_suffix: str) -> go.Figure:
+        """Create the weekday-hour heatmap for the selected statistic."""
         value_col = "mean_diff" if stat == "mean" else "median_diff"
 
         heat = (
@@ -466,6 +493,7 @@ def tank_time_analysis_dashboard(
         return fig
 
     def render(change=None):
+        """Recompute filtered stats and redraw all dashboard outputs."""
         with output:
             clear_output(wait=True)
 
@@ -526,11 +554,13 @@ def tank_time_analysis_dashboard(
     brand_text.observe(render, names="value")
     plz_text.observe(render, names="value")
 
-    controls = widgets.VBox([
-        month_slider,
-        widgets.HBox([fuel_dropdown, stat_dropdown]),
-        widgets.HBox([city_text, brand_text, plz_text]),
-    ])
+    controls = widgets.VBox(
+        [
+            month_slider,
+            widgets.HBox([fuel_dropdown, stat_dropdown]),
+            widgets.HBox([city_text, brand_text, plz_text]),
+        ]
+    )
 
     display(controls, output)
     render()

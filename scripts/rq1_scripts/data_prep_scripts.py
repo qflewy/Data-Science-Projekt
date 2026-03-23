@@ -1,7 +1,9 @@
 from __future__ import annotations
-from pathlib import Path
-import polars as pl
+
 import re
+from pathlib import Path
+
+import polars as pl
 
 
 def build_price_change_events_month(
@@ -10,6 +12,7 @@ def build_price_change_events_month(
     input_root: Path = Path(r"D:/data/tankerkoenig-data/prices"),
     output_root: Path = Path(r"D:/data/derived/price_change_events"),
 ) -> Path:
+    """Build monthly price-change event records from raw price CSV files."""
 
     mm = f"{month:02d}"
     month_dir = input_root / str(year) / mm
@@ -20,7 +23,7 @@ def build_price_change_events_month(
         .rename({"station_uuid": "station_id"})
         .select(["date", "station_id", "diesel", "e5", "e10"])
         .with_columns(
-            pl.col("date")
+            pl.col("date") # AI was used for the following time formatting:
             .str.replace(r"([+-]\d{2})$", "${1}00")
             .str.to_datetime(format="%Y-%m-%d %H:%M:%S%z", strict=False)
             .alias("timestamp")
@@ -112,7 +115,7 @@ def build_daily_price_range_month(
         .rename({"station_uuid": "station_id"})
         .select(["date", "station_id", "diesel", "e5", "e10"])
         .with_columns(
-            pl.col("date")
+            pl.col("date") # AI was used for the following time formatting:
             .str.replace(r"([+-]\d{2})$", "${1}00")
             .str.to_datetime(format="%Y-%m-%d %H:%M:%S%z", strict=False)
             .dt.convert_time_zone("Europe/Berlin")
@@ -209,7 +212,7 @@ def combine_daily_price_range_files(
     else:
         raise ValueError("mode must be either 'year' or 'all'")
     
- # ---------------------------------------------
+# ---------------------------------------------
 
 def build_hourly_price_changes_month(
     year: int,
@@ -260,7 +263,8 @@ def build_hourly_price_changes_month(
 def combine_hourly_price_changes_all(
     input_root: Path = Path(r"D:/data/derived/hourly_price_changes"),
     output_file: Path = Path(r"D:/data/derived/hourly_price_changes_all.parquet"),
-):
+) -> None:
+    """Combine all monthly hourly price-change parquet files into one file."""
 
     files = sorted(input_root.glob("hourly_price_changes_*.parquet"))
 
@@ -285,7 +289,7 @@ def build_monthly_price_observations(
     keep_station_meta: bool = True,
 ) -> Path:
     """
-    Erstellt eine monatliche Analyse-Datei für Tankzeit-/Preisanalysen.
+    Build a monthly analysis file for refueling-time and price analyses.
 
     Input:
       - prices/YYYY/MM/*-prices.csv
@@ -294,7 +298,7 @@ def build_monthly_price_observations(
     Output:
       - station_price_observations_YYYY_MM.parquet
 
-    Zielspalten:
+    Target columns:
       station_id, timestamp, date, hour, weekday,
       fuel_type, price, price_changed,
       optional: brand, city, post_code, latitude, longitude
@@ -451,7 +455,7 @@ def build_monthly_price_observations(
     obs_df = obs_lf.collect(engine="streaming").sort(["station_id", "fuel_type", "timestamp"])
     obs_df.write_parquet(out_file)
 
-    print(f"Gespeichert: {out_file}")
+    print(f"Saved: {out_file}")
     print(obs_df.shape)
     print(obs_df.head())
 
@@ -466,7 +470,7 @@ def build_range(
     skip_existing: bool = True,
 ) -> None:
     """
-    Baut mehrere Monatsdateien.
+    Build multiple monthly files.
     """
     if months is None:
         months = list(range(1, 13))
@@ -492,19 +496,21 @@ def build_range(
                     keep_station_meta=keep_station_meta,
                 )
             except Exception as e:
-                print(f"Fehler bei {year}-{mm}: {e}")
+                print(f"Error for {year}-{mm}: {e}")
 
+
+# the following functions serve the purpose to comprimise data for the website and are created by the help of AI:
 def enrich_station_price_observation_file(
     in_file: str | Path,
     out_file: str | Path,
     compression: str = "zstd",
 ) -> None:
     """
-    Liest eine station_price_observations Parquet-Datei,
-    ergänzt vorab berechnete Analyse-Spalten und schreibt
-    eine neue, angereicherte Parquet-Datei.
+    Read one station_price_observations parquet file,
+    add precomputed analysis columns, and write
+    a new enriched parquet file.
 
-    Neue Spalten:
+    New columns:
     - year_month
     - post_code_str
     - city_lc
@@ -517,7 +523,7 @@ def enrich_station_price_observation_file(
     out_file = Path(out_file)
     out_file.parent.mkdir(parents=True, exist_ok=True)
 
-    # Nur die relevanten Spalten laden
+    # Load only the columns needed for enrichment.
     lf = pl.scan_parquet(in_file).select([
         "station_id",
         "timestamp",
@@ -537,11 +543,11 @@ def enrich_station_price_observation_file(
         "longitude",
     ])
 
-    # year_month möglichst direkt aus date
+    # Derive year_month directly from date.
     lf = lf.with_columns([
         pl.col("date").dt.strftime("%Y-%m").alias("year_month"),
 
-        # Hilfsspalten für spätere Filter
+        # Helper columns for later dashboard filters.
         pl.col("post_code").cast(pl.Utf8).alias("post_code_str"),
         pl.col("city").cast(pl.Utf8).str.to_lowercase().alias("city_lc"),
         pl.col("brand")
@@ -550,7 +556,7 @@ def enrich_station_price_observation_file(
             .str.to_lowercase()
             .alias("brand_lc"),
 
-        # Teure Spalten vorab berechnen
+        # Precompute frequently used aggregations once.
         pl.col("price")
             .min()
             .over(["station_id", "fuel_type", "date"])
@@ -564,7 +570,7 @@ def enrich_station_price_observation_file(
             .alias("is_daily_min"),
     ])
 
-    # Optional: sinnvolle Spaltenreihenfolge
+    # Keep a stable, analysis-friendly column order.
     lf = lf.select([
         "station_id",
         "timestamp",
@@ -591,10 +597,10 @@ def enrich_station_price_observation_file(
         "longitude",
     ])
 
-    # Streaming Collect reduziert RAM-Druck
+    # Streaming collect helps reduce memory pressure.
     df = lf.collect(engine="streaming")
 
-    # Schreiben
+    # Write output parquet with compression and stats.
     df.write_parquet(
         out_file,
         compression=compression,
@@ -611,7 +617,7 @@ def enrich_station_price_observation_directory(
     skip_existing: bool = True,
 ) -> None:
     """
-    Verarbeitet alle passenden Parquet-Dateien in einem Ordner.
+    Process all matching parquet files in a directory.
     """
     in_dir = Path(in_dir)
     out_dir = Path(out_dir)
@@ -642,15 +648,15 @@ def create_north_germany_web_subset(
     compression: str = "zstd",
 ) -> None:
     """
-    Erstellt aus einer enriched-Datei eine stark reduzierte Web-Datei
-    für Norddeutschland (PLZ beginnt mit 1 oder 2).
+    Create a strongly reduced web file from an enriched file
+    for Northern Germany (postal code starts with 1 or 2).
 
-    Behalten werden nur Spalten, die für die spätere Mean-basierte
-    Dashboard-Analyse wirklich nötig sind.
+    Keep only columns needed for the later mean-based
+    dashboard analysis.
 
-    Wenn keep_station_id=False:
-        station_id wird entfernt, Datei wird kleiner,
-        aber eindeutige Stationszählung ist später nicht mehr exakt möglich.
+    If keep_station_id=False:
+        station_id is dropped to reduce file size,
+        but exact unique station counting is no longer possible later.
     """
     in_file = Path(in_file)
     out_file = Path(out_file)
@@ -732,8 +738,7 @@ if __name__ == "__main__":
     #     for month in range(1, 13):
     #         out_file = build_hourly_price_changes_month(year, month)
     #         print(f"Saved to: {out_file}")
-    
+
     #combine_hourly_price_changes_all()
 
     #build_monthly_price_observations(2026, 2)
-
