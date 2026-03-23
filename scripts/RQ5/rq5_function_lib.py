@@ -52,27 +52,27 @@ def total_updates(prices_path: Path, start_year: int, end_year: int) -> pl.DataF
     if not all_files:
         return pl.DataFrame({"station_uuid": [], "updates": [], "anomalies": []})
 
-    update_counts: dict = defaultdict(int)
-    anomaly_counts: dict = defaultdict(int)
+    update_counts: dict = defaultdict(int)  # auto-initializes missing keys to 0, no KeyError on first increment
+    anomaly_counts: dict = defaultdict(int)  # same — stations with no anomalies simply never get written
 
     for f in all_files:
         df = pd.read_parquet(str(f), columns=["station_uuid", "diesel", "e10"])
 
         valid = df[(df["diesel"].notna()) & (df["e10"].notna()) & (df["diesel"] > 0) & (df["e10"] > 0)]
 
-        for uuid, cnt in valid.groupby("station_uuid").size().items():
+        for uuid, cnt in valid.groupby("station_uuid").size().items():  # .size() returns a Series {uuid: count}, .items() unpacks to (uuid, count) pairs
             update_counts[uuid] += int(cnt)
 
-        for uuid, cnt in valid[valid["diesel"] >= valid["e10"]].groupby("station_uuid").size().items():
+        for uuid, cnt in valid[valid["diesel"] >= valid["e10"]].groupby("station_uuid").size().items():  # filter to anomaly rows first, then count per station
             anomaly_counts[uuid] += int(cnt)
 
-        del df, valid
-        gc.collect()
+        del df, valid  # immediately release RAM — files can be hundreds of MB each
+        gc.collect()  # force Python garbage collector to actually free the memory now, not lazily later
 
     return pl.DataFrame({
         "station_uuid": list(update_counts.keys()),
         "updates": [update_counts[k] for k in update_counts],
-        "anomalies": [anomaly_counts.get(k, 0) for k in update_counts],
+        "anomalies": [anomaly_counts.get(k, 0) for k in update_counts],  # stations with zero anomalies are missing from anomaly_counts → default to 0
     })
 
 def save_png(fig, img_name:Path, legend:bool=False):
@@ -152,7 +152,7 @@ def plot_anomaly_rate(combined: pl.DataFrame, parquet_base: Path, start_year: in
 
             counts = (
                 pl.scan_parquet(str(year_dir / "*.parquet"))
-                .select(pl.col("date").str.slice(0, 7).alias("ym"))
+                .select(pl.col("date").str.slice(0, 7).alias("ym"))  # date strings are "YYYY-MM-DD HH:...", slice(0,7) extracts "YYYY-MM"
                 .group_by("ym")
                 .agg(pl.len().alias("total_updates"))
                 .collect()
@@ -162,8 +162,8 @@ def plot_anomaly_rate(combined: pl.DataFrame, parquet_base: Path, start_year: in
         monthly_updates = (
             pl.concat(monthly_updates_list)
             .with_columns([
-                pl.col("ym").str.slice(0, 4).cast(pl.Int32).alias("year"),
-                pl.col("ym").str.slice(5, 2).cast(pl.Int32).alias("month"),
+                pl.col("ym").str.slice(0, 4).cast(pl.Int32).alias("year"),  # "YYYY-MM" → first 4 chars = year
+                pl.col("ym").str.slice(5, 2).cast(pl.Int32).alias("month"),  # "YYYY-MM" → chars at index 5-6 = month
             ])
             .drop("ym")
         )
@@ -176,11 +176,11 @@ def plot_anomaly_rate(combined: pl.DataFrame, parquet_base: Path, start_year: in
         )
 
         rate_pl = anomaly_rate(joined).select(["year", "month", "anomalies", "updates", "anomaly_rate"])
-        rate_pl.write_parquet(cache_path, compression="zstd", compression_level=19)
+        rate_pl.write_parquet(cache_path, compression="zstd", compression_level=19)  # level 19 = max zstd compression, small file size for webapp cache
         print(f"Cache saved: {cache_path.name}")
         rate_df = rate_pl.to_pandas()
 
-    rate_df["date"] = pd.to_datetime(rate_df[["year", "month"]].assign(day=1))
+    rate_df["date"] = pd.to_datetime(rate_df[["year", "month"]].assign(day=1))  # pd.to_datetime needs year+month+day, so add day=1 as placeholder
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
@@ -189,7 +189,7 @@ def plot_anomaly_rate(combined: pl.DataFrame, parquet_base: Path, start_year: in
         mode="lines+markers",
         marker=dict(size=5),
         line=dict(width=2, color="steelblue"),
-        hovertemplate="%{x|%Y-%m}<br>Rate: %{y:.2f}%<extra></extra>"
+        hovertemplate="%{x|%Y-%m}<br>Rate: %{y:.2f}%<extra></extra>"  # <extra></extra> suppresses the trace name shown by default in the hover box
     ))
     fig.update_layout(
         title=f"E10/Diesel Anomaly Rate per Month ({start_year}-{end_year - 1})",
@@ -208,22 +208,22 @@ def plot_anomalies_per_year(combined: pl.DataFrame, start_year: int, end_year: i
     year_data = (
         combined.group_by("year").agg(pl.len().alias("count")).sort("year").to_pandas()
     )
-    year_data["count_m"] = year_data["count"] / 1_000_000
+    year_data["count_m"] = year_data["count"] / 1_000_000  # 1_000_000 = 1000000, underscores are just visual separators
 
     fig = go.Figure(go.Bar(
         x=year_data["year"],
         y=year_data["count_m"],
         marker_color="steelblue",
         opacity=0.7,
-        text=year_data["count_m"].map("{:.1f}M".format),
+        text=year_data["count_m"].map("{:.1f}M".format),  # formats each float as e.g. "3.5M" for bar labels
         textposition="outside",
-        hovertemplate="Year: %{x}<br>Anomalies: %{text}<extra></extra>", # Claude Code
+        hovertemplate="Year: %{x}<br>Anomalies: %{text}<extra></extra>",
     ))
     fig.update_layout(
         title=f"Total Anomalies per Year ({start_year}-{end_year - 1})",
         xaxis_title="Year",
         yaxis_title="Anomalies (Millions)",
-        xaxis=dict(tickmode="linear"),
+        xaxis=dict(tickmode="linear"),  # forces a tick for every year, prevents plotly from auto-skipping years
         bargap=0.3,
     )
     return fig
@@ -240,11 +240,11 @@ def precompute_anomaly_rate_by_hour(parquet_base: Path, anomalies_path: Path, ye
         lf = pl.scan_parquet(str(parquet_base / str(year) / "*.parquet"))
         hourly = (
             lf.with_columns([
-                pl.col("date").str.slice(11, 2).cast(pl.Int32).alias("hour"),
+                pl.col("date").str.slice(11, 2).cast(pl.Int32).alias("hour"),  # date string "YYYY-MM-DD HH:...", chars at index 11-12 = hour
                 (pl.col("diesel").is_not_null() & pl.col("e10").is_not_null() & (pl.col("diesel") >= pl.col("e10"))).alias("anomaly")
             ])
             .group_by("hour")
-            .agg([pl.len().alias("updates"), pl.col("anomaly").sum().alias("anomalies")])
+            .agg([pl.len().alias("updates"), pl.col("anomaly").sum().alias("anomalies")])  # summing a boolean column, counts the True values
             .with_columns((pl.col("anomalies") / pl.col("updates")).alias("anomaly_rate"))
             .sort("hour")
             .collect()
@@ -252,7 +252,7 @@ def precompute_anomaly_rate_by_hour(parquet_base: Path, anomalies_path: Path, ye
         hourly.write_parquet(cache_path, compression="zstd", compression_level=19)
         
         del lf, hourly
-        gc.collect()
+        gc.collect()  # force Python garbage collector to actually free the memory
         
     print("Hourly anomaly rates precomputed.")
 
@@ -269,7 +269,7 @@ def plot_anomaly_rate_by_hour(parquet_base: Path, year: int, anomalies_path: Pat
         lf = pl.scan_parquet(str(parquet_base / str(year) / "*.parquet"))
         hourly = (
             lf.with_columns([
-                pl.col("date").str.slice(11, 2).cast(pl.Int32).alias("hour"),
+                pl.col("date").str.slice(11, 2).cast(pl.Int32).alias("hour"),  # date string "YYYY-MM-DD HH:...", chars at index 11-12 = hour
                 (
                     pl.col("diesel").is_not_null() &
                     pl.col("e10").is_not_null() &
@@ -279,7 +279,7 @@ def plot_anomaly_rate_by_hour(parquet_base: Path, year: int, anomalies_path: Pat
             .group_by("hour")
             .agg([
                 pl.len().alias("updates"),
-                pl.col("anomaly").sum().alias("anomalies")
+                pl.col("anomaly").sum().alias("anomalies")  # summing a boolean column, counts the True values
             ])
             .with_columns(
                 (pl.col("anomalies") / pl.col("updates")).alias("anomaly_rate")
@@ -298,7 +298,7 @@ def plot_anomaly_rate_by_hour(parquet_base: Path, year: int, anomalies_path: Pat
         title=f"Anomaly Rate by Hour of Day ({year})",
         xaxis_title="Hour of Day",
         yaxis_title="Anomaly Rate",
-        xaxis=dict(tickmode="linear"),
+        xaxis=dict(tickmode="linear"),  # forces a tick for every year, prevents plotly from auto-skipping years
     )
     return fig
 
@@ -322,7 +322,7 @@ def prepare_station_map(station_stats: pl.DataFrame, stations: pl.DataFrame, top
     )
 
     return joined.with_columns(
-        (pl.col("brand").fill_null("Unknown") + " " + pl.col("city").fill_null(""))
+        (pl.col("brand").fill_null("Unknown") + " " + pl.col("city").fill_null(""))  # handle nulls before string concat — null + anything = null in polars
         .alias("name")
     )
 
@@ -336,13 +336,13 @@ def precompute_top_stations_map(stations_csv: Path, stations_parquet: Path, stat
 
     cache_path = anomalies_path / "top_stations_map.parquet"
     stations = load_stations(stations_csv, stations_parquet)
-    station_stats = pl.read_parquet(stats_cache).filter(pl.col("updates") >= min_updates)
+    station_stats = pl.read_parquet(stats_cache).filter(pl.col("updates") >= min_updates)  # exclude stations with too few data points to avoid statistically meaningless 100% rates
     joined = (
         station_stats
         .sort("anomaly_rate", descending=True)
         .join(stations, left_on="station_uuid", right_on="uuid", how="left")
         .with_columns(
-            (pl.col("brand").fill_null("Unknown") + " " + pl.col("city").fill_null("")).alias("name")
+            (pl.col("brand").fill_null("Unknown") + " " + pl.col("city").fill_null(""))  # handle nulls before string concat — null + anything = null in polars.alias("name")
         )
         .select(["station_uuid", "name", "latitude", "longitude", "anomalies", "updates", "anomaly_rate"])
     )
@@ -360,7 +360,7 @@ def plot_top_stations_map(stations_csv: Path, stations_parquet: Path, stats_cach
         map_df = pl.read_parquet(cache_path).head(top_n)
     else:
         stations = load_stations(stations_csv, stations_parquet)
-        station_stats = pl.read_parquet(stats_cache).filter(pl.col("updates") >= min_updates)
+        station_stats = pl.read_parquet(stats_cache).filter(pl.col("updates") >= min_updates)  # exclude stations with too few data points to avoid statistically meaningless 100% rates
         map_df = prepare_station_map(station_stats, stations, top_n=top_n)
 
     station_data = map_df.to_pandas()
@@ -406,7 +406,7 @@ def plot_anomaly_duration_distribution(df_durations: pl.DataFrame) -> go.Figure:
 
     fig = go.Figure()
 
-    for row in duration_stats.iter_rows(named=True):
+    for row in duration_stats.iter_rows(named=True):  # named=True yields dicts {col: value} instead of plain tuples
         fig.add_trace(go.Box(
             x=[row["year"]],
             q1=[round(row["q025"], 1)],
@@ -415,12 +415,12 @@ def plot_anomaly_duration_distribution(df_durations: pl.DataFrame) -> go.Figure:
             lowerfence=[round(row["min"], 1)],
             upperfence=[round(row["max"], 1)],
             name=str(row["year"]),
-            boxpoints=False,
+            boxpoints=False,  # do not overlay individual data points on the box — there are millions of them
         ))
 
     fig.update_layout(
         title="Anomaly Duration Distribution by Year",
-        yaxis_type="log",
+        yaxis_type="log",  # log scale needed: 2022 outliers (~days) would visually crush normal years (~minutes) on a linear axis
         yaxis_title="Duration (hours)"
     )
 
