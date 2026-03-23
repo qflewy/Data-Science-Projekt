@@ -441,7 +441,7 @@ def get_autobahn_stations(
     stations_df["is_autobahn"] = mask_house_number | mask_name | mask_street
 
     # filter out non autobahn stations and export.
-    stations_df = stations_df[stations_df["is_autobahn"] == True]  # noqa: E712
+    stations_df = stations_df[stations_df["is_autobahn"] == True]  
     export_df = stations_df[
         ["uuid", "longitude", "latitude", "brand", "post_code"]
     ]
