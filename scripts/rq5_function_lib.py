@@ -133,7 +133,7 @@ def anomaly_rate(updates: pl.DataFrame) -> pl.DataFrame:
 def plot_anomaly_rate(combined: pl.DataFrame, parquet_base: Path, start_year: int, end_year: int) -> go.Figure:
     """
     Compute monthly anomaly rate (anomalies / total price updates).
-    Result is cached as a compressed parquet file next to the anomaly files for WebApp.
+    Result is a cached, compressed parquet file for the WebApp and a Plot for the anomaly rates per month.
     """
     cache_path = parquet_base / f"monthly_anomaly_rate_{start_year}_{end_year - 1}.parquet"
 
@@ -149,6 +149,7 @@ def plot_anomaly_rate(combined: pl.DataFrame, parquet_base: Path, start_year: in
             year_dir = parquet_base / str(year)
             if not year_dir.exists():
                 continue
+
             counts = (
                 pl.scan_parquet(str(year_dir / "*.parquet"))
                 .select(pl.col("date").str.slice(0, 7).alias("ym"))
@@ -173,6 +174,7 @@ def plot_anomaly_rate(combined: pl.DataFrame, parquet_base: Path, start_year: in
             .join(monthly_updates.rename({"total_updates": "updates"}), on=["year", "month"], how="inner")
             .sort(["year", "month"])
         )
+
         rate_pl = anomaly_rate(joined).select(["year", "month", "anomalies", "updates", "anomaly_rate"])
         rate_pl.write_parquet(cache_path, compression="zstd", compression_level=19)
         print(f"Cache saved: {cache_path.name}")
@@ -187,7 +189,7 @@ def plot_anomaly_rate(combined: pl.DataFrame, parquet_base: Path, start_year: in
         mode="lines+markers",
         marker=dict(size=5),
         line=dict(width=2, color="steelblue"),
-        hovertemplate="%{x|%Y-%m}<br>Rate: %{y:.2f}%<extra></extra>" # from Claude Code
+        hovertemplate="%{x|%Y-%m}<br>Rate: %{y:.2f}%<extra></extra>"
     ))
     fig.update_layout(
         title=f"E10/Diesel Anomaly Rate per Month ({start_year}-{end_year - 1})",
@@ -201,7 +203,7 @@ def plot_anomaly_rate(combined: pl.DataFrame, parquet_base: Path, start_year: in
 
 def plot_anomalies_per_year(combined: pl.DataFrame, start_year: int, end_year: int) -> go.Figure:
     """
-    Plot total anomalies per year as an interactive Plotly bar chart.
+    Plot total anomalies per year as an bar chart.
     """
     year_data = (
         combined.group_by("year").agg(pl.len().alias("count")).sort("year").to_pandas()
@@ -229,7 +231,7 @@ def plot_anomalies_per_year(combined: pl.DataFrame, start_year: int, end_year: i
 
 def precompute_anomaly_rate_by_hour(parquet_base: Path, anomalies_path: Path, years: list[int]) -> None:
     """
-    Precompute hourly anomaly rate for each year and save as small parquet files in anomalies_path for WebApp.
+    Precompute hourly anomaly rate for each year and save as small parquet files for WebApp.
     """
     for year in years:
         cache_path = anomalies_path / f"hourly_anomaly_rate_{year}.parquet"
@@ -257,8 +259,8 @@ def precompute_anomaly_rate_by_hour(parquet_base: Path, anomalies_path: Path, ye
 
 def plot_anomaly_rate_by_hour(parquet_base: Path, year: int, anomalies_path: Path | None = None) -> go.Figure:
     """
-    Plot anomaly rate (diesel >= e10) by hour of day for a given year
-    Loads from precomputed cache in anomalies_path if available.
+    Plot anomaly rate by hour of day for a given year
+    Loads from precomputed cache if available.
     """
     cache_path = anomalies_path / f"hourly_anomaly_rate_{year}.parquet" if anomalies_path else None
     if cache_path and cache_path.exists():
@@ -290,7 +292,7 @@ def plot_anomaly_rate_by_hour(parquet_base: Path, year: int, anomalies_path: Pat
         x=hourly["hour"].to_list(),
         y=hourly["anomaly_rate"].to_list(),
         marker_color="steelblue",
-        hovertemplate="Hour: %{x}<br>Anomaly Rate: %{y:.3f}<extra></extra>", # from Claude Code
+        hovertemplate="Hour: %{x}<br>Anomaly Rate: %{y:.3f}<extra></extra>",
     ))
     fig.update_layout(
         title=f"Anomaly Rate by Hour of Day ({year})",
@@ -303,7 +305,7 @@ def plot_anomaly_rate_by_hour(parquet_base: Path, year: int, anomalies_path: Pat
 
 def prepare_station_map(station_stats: pl.DataFrame, stations: pl.DataFrame, top_n: int = 15) -> pl.DataFrame:
     """
-    Prepare dataframe for plotting map.
+    Prepare dataframe for map.
     """
 
     top = (
@@ -327,10 +329,11 @@ def prepare_station_map(station_stats: pl.DataFrame, stations: pl.DataFrame, top
 
 def precompute_top_stations_map(stations_csv: Path, stations_parquet: Path, stats_cache: Path, anomalies_path: Path, min_updates: int = 50000) -> None:
     """
-    Precompute joined station map data (filtered, sorted by anomaly_rate) and save to anomalies_path.
+    Precompute joined station map data (filtered, sorted by anomaly_rate) and save as parquet files.
     The webapp can then slice Top N dynamically without reloading the large source files.
     Asked Claude Code for inspiration how to cache files for webapp
     """
+
     cache_path = anomalies_path / "top_stations_map.parquet"
     stations = load_stations(stations_csv, stations_parquet)
     station_stats = pl.read_parquet(stats_cache).filter(pl.col("updates") >= min_updates)
@@ -343,7 +346,7 @@ def precompute_top_stations_map(stations_csv: Path, stations_parquet: Path, stat
         )
         .select(["station_uuid", "name", "latitude", "longitude", "anomalies", "updates", "anomaly_rate"])
     )
-    joined.write_parquet(cache_path, compression="zstd", compression_level=19)
+    joined.write_parquet(cache_path, compression="zstd", compression_level=19) # compression and compression level from claude
 
 
 def plot_top_stations_map(stations_csv: Path, stations_parquet: Path, stats_cache: Path, start_year: int, end_year: int, top_n: int = 100, min_updates: int = 50000, anomalies_path: Path | None = None) -> go.Figure:
@@ -385,7 +388,7 @@ def plot_top_stations_map(stations_csv: Path, stations_parquet: Path, stats_cach
 
 def plot_anomaly_duration_distribution(df_durations: pl.DataFrame) -> go.Figure:
     """
-    Plot anomaly duration distribution as box plots per year (log scale).
+    Plot anomaly duration distribution as box plots per year (with log scale).
     """
     duration_stats = (
         df_durations
