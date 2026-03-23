@@ -1,5 +1,5 @@
-# Data-Science-Projekt
-University Project of 4 Students
+# Fuel prices in Germany
+We are four students from Kiel University, and this project was created as part of our data science project.
 
 ### Introduction
 
