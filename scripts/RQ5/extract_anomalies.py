@@ -25,13 +25,13 @@ def extract_anomalies_from_parquet(year: int = None, month: int = None, base_pat
     total_anomalies = 0
 
     if month:
-        month_pattern = f"{year}-{month:02d}.parquet"
-        parquet_files = [year_path / month_pattern] if (year_path / month_pattern).exists() else []
+        month_pattern = f"{year}-{month:02d}.parquet"  # :02d zero-pads single digits, e.g. month 3 → "03"
+        parquet_files = [year_path / month_pattern] if (year_path / month_pattern).exists() else []  # wrap in list so the for-loop below works the same as for a full year
     else:
         parquet_files = sorted(year_path.glob(f"{year}-*.parquet"))
     
     for parquet_file in parquet_files:
-        month_name = parquet_file.stem.split("-")[1]
+        month_name = parquet_file.stem.split("-")[1]  # .stem strips the .parquet extension, split gives ["2022", "03"] → take index 1 for the month
         try:
             df = pl.read_parquet(parquet_file)
             
@@ -44,7 +44,7 @@ def extract_anomalies_from_parquet(year: int = None, month: int = None, base_pat
                 )
             ).drop(["e5", "e5change"])  # Drop E5
             
-            if anomalies.height > 0:
+            if anomalies.height > 0:  # .height for number of rows
                 anomalies = anomalies.sort("date")
                 
                 monthly_output = output_path / f"{year}_{month_name}_anomalies.parquet"
