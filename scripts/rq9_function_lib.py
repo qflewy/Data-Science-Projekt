@@ -78,8 +78,6 @@ def display_weather_codes_per_region(
 
 
 # NOTE: parts of this method are written with the help of chatgpt.
-
-
 def run_volatility_panel_regression(
     price_path: Path,
     weather_path: Path,

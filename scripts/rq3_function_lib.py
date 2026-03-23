@@ -126,8 +126,6 @@ def show_median_price_heatmap_per_region(
 
 
 # NOTE: parts of this function were written with the help of gemini.
-
-
 def get_borderregion_stations(station_input_path: Path, outputpath: Path):
     """This function calculates for each stations the distance to Germanys
     borders and sorts them into border, surrounding and inland groups.
@@ -258,8 +256,6 @@ def get_borderregion_stations(station_input_path: Path, outputpath: Path):
 
 
 # NOTE: parts of this function were written with the help of chatgpt.
-
-
 def mann_whitney_test_border_prices(
     median_price_path: Path, border_stations_file: Path, fuel_type: str
 ):
@@ -581,8 +577,6 @@ def show_border_price_difference(
 
 
 # NOTE: parts of this functions were written with the help of chatgpt.
-
-
 def perform_matched_panel_regression_autobahn_stations(
     median_price_path: Path,
     stations_file: Path,
@@ -1278,8 +1272,6 @@ def __classify_brand(brand: str):
 # For calculation, we use geopandas to convert the coordinates
 # to a 2d metric system format.
 # written wirth the help of chatgpt
-
-
 def __build_match_map(stations: pl.DataFrame, k: int, max_dist: int):
     pdf = stations.select(
         ["uuid", "autobahn", "longitude", "latitude"]
@@ -1364,8 +1356,6 @@ def __build_match_map(stations: pl.DataFrame, k: int, max_dist: int):
 
 # calculate median absolute devianion.
 # written with the help of chatgpt.
-
-
 def __mad(x):
     """This method calculates the median absolute deviation for a given one-dim
     array-like/pd.Series.
@@ -1380,8 +1370,6 @@ def __mad(x):
 
 # saves plot to a png with sufficient resolution for poster.
 # Partly written with help of chatgpt.
-
-
 def save_png(fig, img_name: Path, legend: bool = False):
     """This method saves plotly figures with high resolution (for the poster)
     to the given output path.
