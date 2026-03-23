@@ -7,8 +7,8 @@ from linearmodels.iv.absorbing import AbsorbingLS
 
 def display_weather_codes_per_region(weather_path:Path,weather_codes:Path,region:str,year:int):
     '''
-    Displays a plotly scatterplot with the (hourly) weathercodes from a chosen region in a chosen year. Return nothing.
-    i: Path weather_path, Path weather_codes, string, region, int year
+    Displays a plotly scatterplot with the (hourly) weathercodes and their description from a chosen region in a chosen year. Returns nothing.
+    i: Path weather_path, Path weather_codes, string region, int year
     o: None
     '''
 
@@ -77,7 +77,6 @@ def display_weather_codes_per_region(weather_path:Path,weather_codes:Path,region
 def run_volatility_panel_regression(price_path:Path,weather_path:Path,regions:list,extreme_weather_codes_file:Path,fuel_type:str="diesel",statistic:str="median",mad_window:int=24):
     '''
     Builds a panel dataset for each Leitregion and then estimates the effect of extreme weather on the gas stations price volatility.
-
     i: Path price_path, Path weather_path, list regions, Path extreme_weather_codes_file, string fuel_type, string statistic, int mad_window
     o: AbsorbingLSResults fixed-effects regression result
     '''
@@ -129,7 +128,7 @@ def run_volatility_panel_regression(price_path:Path,weather_path:Path,regions:li
                 pl.col("timestamp_utc").dt.date().alias("date"),
                 pl.col("timestamp_utc").dt.hour().alias("hour"),
 
-                #get the price changes (first difference) from hour to hour
+                #get the price changes (first difference) from hour to hour.
                 pl.col(price_column).diff().alias("price_change")
             ])
             .with_columns([
@@ -179,7 +178,7 @@ def run_volatility_panel_regression(price_path:Path,weather_path:Path,regions:li
         "region_cluster": panel_df["region"].astype("category").cat.codes
     })
 
-    #define the model (we use the AbsorbingLS model with the above defined variables)
+    #define the model (we use the AbsorbingLS model with the above defined variables).
     model = AbsorbingLS(
         dependent = y,
         exog = x,

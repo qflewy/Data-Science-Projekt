@@ -13,7 +13,9 @@ from linearmodels.iv import AbsorbingLS
 
 def show_median_price_heatmap_per_region(region_price_path:Path, region_path:Path, year:int, fuel_type:str,monthly_median_prices:Path=None,use_median_file:bool=False):
     '''
-    This function plots a map that dynamically projects the monthly median prices of a selected fuel type over a selected year for all post code Leitregionen. If the monthly medians file exists, set use_median_file to True and give the filepath as input for monthly_median_prices to avoid having to compute the values from scratch. Returns nothing.
+    This function plots a map that dynamically projects the monthly median prices of a selected fuel type over a selected year for all post code Leitregionen. 
+    If the monthly medians file exists, set use_median_file to True and give the filepath as input for monthly_median_prices to avoid having to compute the values from scratch. 
+    Returns nothing.
     i: Path region_price_path, Path region_path, int year, string fuel_type, Path monthly_median_prices, bool use_median_file
     o: None
     '''
@@ -79,7 +81,7 @@ def show_median_price_heatmap_per_region(region_price_path:Path, region_path:Pat
     fig.update_layout(margin = {"r":0,"t":0,"l":0,"b":0},
                       map=dict(
                         style="open-street-map",
-                        center=dict(lat=51.1657, lon=10.4515),
+                        center=dict(lat=51.1657, lon=10.4515), #geographical center of germany.
                         zoom=6,
                         bounds=dict(
                             west=4.5,
@@ -97,7 +99,9 @@ def show_median_price_heatmap_per_region(region_price_path:Path, region_path:Pat
 #NOTE: parts of this function were written with the help of gemini.
 def get_borderregion_stations(station_input_path:Path, outputpath:Path):
     '''
-    This function calculates for each stations the distance to Germanys borders and sorts them into border, surrounding and inland groups. Creates a Dataframe with the border and surrounding stations and their closest neighbouring country.
+    This function calculates for each stations the distance to Germanys borders and sorts them into border, surrounding and inland groups. 
+    Creates a Dataframe with the border and surrounding stations and their closest neighbouring country.
+    This function uses the open-street-maps osmx api for the border coordinates.
     Safes the dataframe as csv to the selected output. Returns nothing.
     i: Path station_input_path, Path outputpath
     o: None
@@ -148,7 +152,7 @@ def get_borderregion_stations(station_input_path:Path, outputpath:Path):
 
     station_geo_df["border_region"] = station_geo_df["dist_km"].apply(get_zone)
 
-    #filter sea border to denmark and Bodensee.
+    #filter sea border to Denmark and Bodensee.
     mask_dk = (station_geo_df["neighbour_country"] == "Denmark") & ((station_geo_df["longitude"] > 9.6) | (station_geo_df["longitude"] < 8.8))
     mask_bodensee = (station_geo_df["neighbour_country"].isin(["Switzerland", "Austria"])) & \
         (station_geo_df["latitude"] < 47.8) & (station_geo_df["longitude"] > 8.9) & (station_geo_df["longitude"] < 9.8)
@@ -198,13 +202,13 @@ def mann_whitney_test_border_prices(median_price_path:Path,border_stations_file:
     overall_lf = (preprocessed_lf.group_by(["neighbour_country", "border_region", "station_uuid"])
                   .agg(pl.col(f"{fuel_type}_median").median().alias(f"{fuel_type}_median_price")))
     
-    # collect the data.
+    #collect the data.
     yearly_df = yearly_lf.collect()
     overall_df = overall_lf.collect() 
 
     # support function for the test.
     def __calculate_test(df:pl.DataFrame,country:str):
-        #filter for conutry
+        #filter for conutry.
         df_country = df.filter(pl.col("neighbour_country") == country)
 
         #get lists for border and surrounding region.
@@ -275,7 +279,8 @@ def mann_whitney_test_border_prices(median_price_path:Path,border_stations_file:
 
 def get_autobahn_stations(station_input_path:Path,autobahn_output_path:Path):
     '''
-    This functions filters manually for buzzwords that indicate whether a gas station is on the Autobahn. It saves the Autobahn stations dataframe as a csv to the given output path. Returns nothing.
+    This functions filters manually for buzzwords that indicate whether a gas station is on the Autobahn. It saves the Autobahn stations dataframe as a csv to the given output path. 
+    Returns nothing.
     i: Path station_input_path, Path autobahn_output_path
     o: None
     '''
@@ -305,7 +310,7 @@ def get_autobahn_stations(station_input_path:Path,autobahn_output_path:Path):
 
 def filter_autobahn_from_borders(border_file:Path,autobahn_file:Path,output_path:Path):
     '''
-    This method removes all autbahn stations from the border region stations. The result is saved as a new dataframe as csv to the given outputpath. Returns nothing.
+    This method removes all Autobahn stations from the border region stations. The result is saved as a new dataframe as csv to the given outputpath. Returns nothing.
     i: Path border_file, Path autobahn_file, Path output_path
     o: None
     '''
@@ -319,13 +324,14 @@ def filter_autobahn_from_borders(border_file:Path,autobahn_file:Path,output_path
         how = "anti"
     ))
 
-    no_autobahn_border_df.write_csv(output_path / "lower_non_autobahn_border_stations.csv")
+    no_autobahn_border_df.write_csv(output_path / "lower_non_autobahn_border_stations.csv") # (named "lower" because the threshold for border distance was lowered in the course of the project.)
 
 def show_border_price_difference(median_price_path:Path,border_stations_file:Path,fuel_type:str,country:str,median_distributions_file:Path=None,use_distributions_file:bool=False):
     '''
-    This function plots a boxplot with the distributions of the median fuel prices of a selected fuel type over time for a selected country. For each year a box for the border region stations and a box for the surrounding region stations is plottet.
+    This function plots a boxplot with the distributions of the median fuel prices of a selected fuel type over time for a selected country. 
+    For each year a box for the border region stations and a box for the surrounding region stations is plottet.
     For the website use: if the median distribution file exists, you can set use_distributions_file to True and give the Path as parameter. Returns nothing.
-    i: Path median_price_path, Path border_stations_file, string fuel_type, string country, median_distribution
+    i: Path median_price_path, Path border_stations_file, string fuel_type, string country, Path median_distribution_file, bool use_distributions_file
     o: None
     '''
 
@@ -390,7 +396,8 @@ def show_border_price_difference(median_price_path:Path,border_stations_file:Pat
 #NOTE: parts of this functions were written with the help of chatgpt.
 def perform_matched_panel_regression_autobahn_stations(median_price_path:Path,stations_file:Path,autobahn_file:Path,fuel_type:str,statistic:str="mean",return_residuals:bool=False):
     '''
-    This method performs a panel regression that estimates the coefficient of the factor 'autobahn' on the price of a selected fuel type. It filters out the fixed effects of time and geographic proximity.
+    This method performs a panel regression that estimates the coefficient of the factor 'autobahn' on the price of a selected fuel type. 
+    It filters out the fixed effects of time and geographic proximity.
     For a robustness check, it's also possible to select the price median as the statistic. If needed, the function also returns the residual errors.
     i: Path median_price_path, Path stations_file, Path autobahn_file, string fuel_type, string statistic, bool return_residuals
     o: pd.DataFrame summary_df, pd.DataFrame analysis_panel, (pd.DataFrame residuals_df)
@@ -424,10 +431,10 @@ def perform_matched_panel_regression_autobahn_stations(median_price_path:Path,st
     #build the panel for the analysis (combine the price and the stations dfs with the match map helper method).
     match_map = __build_match_map(stations_panel_df, K_MATCHES, MAX_DISTANCE)
     analysis_panel = (match_map.join(stations_panel_df
-                                     .select(["uuid", "brand", "brand_category", "latitude", "longitude"]),
-                                     left_on = "station_uuid",
-                                     right_on = "uuid",
-                                     how = "left")
+                                    .select(["uuid", "brand", "brand_category", "latitude", "longitude"]),
+                                    left_on = "station_uuid",
+                                    right_on = "uuid",
+                                    how = "left")
                                 .join(
                                     price_panel_df,
                                     left_on = "station_uuid",
@@ -502,6 +509,7 @@ def plot_yearly_autobahn_premium_line(yearly_df:pd.DataFrame,statistic:str="mean
     '''
     This method plots a line of the autobahn premium for a selected fuel type with surrounding confidence intervall over the years. Returns nothing.
     i: pd.DataFrame yearly_df, string statistic
+    o: None
     '''
 
     #filter for selected statistic and format year column.
@@ -619,12 +627,13 @@ def plot_yearly_autobahn_premium_line(yearly_df:pd.DataFrame,statistic:str="mean
         
     )
     fig.update_xaxes(tickformat="%Y", dtick="M12")
-    save_png(fig, Path(r'rq3_premium_line.png')) #saves plot as png.
+    
     fig.show()
 
 def plot_autobahn_premium_barchart(yearly_df:pd.DataFrame,statistic:str="mean"):
     '''
-    This function plots a bar chart where each bar represents one fuel type Autobahn premium in a year. So for each year, we have three separate bars. The price statistic is "mean" by default, but can also be changed to "median" if wanted. Returns nothing.
+    This function plots a bar chart where each bar represents one fuel type Autobahn premium in a year. So for each year, we have three separate bars. 
+    The price statistic is "mean" by default, but can also be changed to "median" if wanted. Returns nothing.
     i: pd.DataFrame yearly_df, string statistic
     o: None 
     '''
@@ -712,6 +721,14 @@ def plot_autobahn_premium_barchart(yearly_df:pd.DataFrame,statistic:str="mean"):
 
 #NOTE: parts of this function were written with the help of chatgpt.
 def perform_wilcoxon_variance_test_on_autobahn(residuals_df:pd.DataFrame,measure:str="mad",min_station_observations:int=30):
+    '''
+    This method perfoms a wilcoxon signed rank test on the residual errors of the fixed-effects panel regression for the autobahn premium. 
+    The test compares the paired difference of the residual station volatility for Autobahn and each average control group for each year.
+    The standard measure the test uses is median absolute deviation, it can also use the standard deviation as measure. 
+    Also, the minimum required amount of observation per station, min_station_observations, can be changed.
+    i: pd.DataFrame residuals_df, string measure, int min_station_observations
+    o: pd.DataFrame results
+    '''
     
     #check if meassure is valid.
     if measure not in ["mad", "sd"]:
@@ -787,13 +804,14 @@ def perform_wilcoxon_variance_test_on_autobahn(residuals_df:pd.DataFrame,measure
 
 def plot_wilcoxon_results_loolipop(wilcoxon_df:pd.DataFrame):
     '''
-    Plots a lollipop plot for the median volatility difference of autobahn station prices and non autobahn station prices. The difference is positive, when the autobahn volatility is higher than the non autobahn volatility. Returns nothing.
+    Plots a lollipop plot for the median volatility difference of autobahn station prices and non autobahn station prices. 
+    The difference is positive, when the autobahn volatility is higher than the non autobahn volatility. Returns nothing.
     i: pd.Dataframe wilcoxon_df
     o: None
     '''
 
     # Build one single trace for all stems using None separators.
-    #this part was written with the help of chatgpt.
+    # this part was written with the help of chatgpt.
     x_stems = []
     y_stems = []
     wilcoxon_df["year"] = pd.to_datetime(wilcoxon_df["year"].astype(int).astype(str), format="%Y")
@@ -856,7 +874,8 @@ def plot_wilcoxon_results_loolipop(wilcoxon_df:pd.DataFrame):
 #NOTE: this method was written with the help of chatgpt.
 def __classify_brand(brand:str):
     '''
-    This method classifies the brand of a gas station using its name and a predefined list of buzzwords that indicate the brand class of a station. The brand classes are "unbranded", "branded" and "not defined/unknown".
+    This method classifies the brand of a gas station using its name and a predefined list of buzzwords that indicate the brand class of a station. 
+    The brand classes are "unbranded", "branded" and "not defined/unknown".
     i: string brand
     o: string brand_class
     '''
@@ -882,9 +901,9 @@ def __classify_brand(brand:str):
         
     return "not defined/unknown"
     
-# we match each autobahn station with a k-dim tree to its nearest non autobahn neighbours to get regional proximity for the controll groups
+# we match each autobahn station with a k-dim tree to its nearest non autobahn neighbours to get regional proximity for the controll groups.
 # By doing this, we mitigate the risk of other geographical effects. For calculation, we use geopandas to convert the coordinates to a 2d metric system format.
-#written wirth the help of chatgpt
+# written wirth the help of chatgpt
 def __build_match_map(stations:pl.DataFrame, k:int, max_dist:int):
     pdf = stations.select(["uuid", "autobahn", "longitude", "latitude"]).to_pandas()
 
@@ -892,7 +911,7 @@ def __build_match_map(stations:pl.DataFrame, k:int, max_dist:int):
                             geometry = gpd.points_from_xy(pdf["longitude"], pdf["latitude"]),
                             crs = "EPSG:4326").to_crs(epsg = 32632)
         
-    #split dataset
+    #split dataset.
     test = gdf[gdf["autobahn"] == 1].reset_index(drop = True)
     controll = gdf[gdf["autobahn"] == 0].reset_index(drop = True)
 
@@ -901,14 +920,14 @@ def __build_match_map(stations:pl.DataFrame, k:int, max_dist:int):
     if controll.empty:
         raise ValueError("No non autobahn stations found")
         
-    # to avoid érrors, make sure k doesnt exceed number of available controll stations
+    # to avoid érrors, make sure k doesnt exceed number of available controll stations.
     k_eff = min(k, len(controll))
 
-    #combine lat and lng into one column
+    #combine lat and lng into one column.
     test_xy = np.column_stack([test.geometry.x, test.geometry.y])
     controll_xy = np.column_stack([controll.geometry.x, controll.geometry.y])
 
-    # build tree
+    # build tree.
     tree = KDTree(controll_xy)
     distances, indices = tree.query(test_xy, k = k_eff)
 
@@ -918,11 +937,11 @@ def __build_match_map(stations:pl.DataFrame, k:int, max_dist:int):
  
     rows = []
 
-    #for each autobahn station, query the tree to get the closest non autobahn stations
+    #for each autobahn station, query the tree to get the closest non autobahn stations.
     for i in range(len(test)):
         test_id = test.loc[i, "uuid"]
 
-        #add respective autobahn station to our list
+        #add respective autobahn station to our list.
         rows.append({
                 "match_set_uuid" : test_id,
                 "station_uuid": test_id,
@@ -931,7 +950,7 @@ def __build_match_map(stations:pl.DataFrame, k:int, max_dist:int):
             })
 
         for dist, idx in zip(distances[i], indices[i]):
-            dist_km = float(dist) / 1000.0 #convert from meters in km
+            dist_km = float(dist) / 1000.0 #convert from meters to km.
 
             if max_dist is not None and dist_km > max_dist:
                 continue
@@ -944,7 +963,7 @@ def __build_match_map(stations:pl.DataFrame, k:int, max_dist:int):
                 })
     match_map = pl.DataFrame(rows).unique(subset = ["match_set_uuid", "station_uuid"])
 
-    #filter out invalid sets (see if there are enough controll points)
+    #filter out invalid sets (see if there are enough controll points).
     valid_sets = (match_map
                       .group_by("match_set_uuid")
                       .agg([pl.len().alias("n"),
@@ -955,8 +974,8 @@ def __build_match_map(stations:pl.DataFrame, k:int, max_dist:int):
 
     return match_map.join(valid_sets, on = "match_set_uuid", how = "inner")
 
-# calculate median absolute devianion
-#written with the help of chatgpt
+# calculate median absolute devianion.
+#written with the help of chatgpt.
 def __mad(x):
     '''
     This method calculates the median absolute deviation for a given one-dim array-like/pd.Series.
@@ -967,10 +986,13 @@ def __mad(x):
     median = np.median(x)
     return np.median(np.abs(x - median))
 
-#saves plot to a png with sufficient resolution for poster
+#saves plot to a png with sufficient resolution for poster.
+#Partly written with help of chatgpt.
 def save_png(fig, img_name:Path, legend:bool=False):
     '''
-    This method saves plotly figures with high resolution (for the poster) to the given output path. Before saving the plot, the method adjusts the text to an appropriate size. If the plot has legend, set legend to True so it also adjusts the legends font size before saving. The chosen figure name should contain the suffix ".png". Returns nothing.
+    This method saves plotly figures with high resolution (for the poster) to the given output path. 
+    Before saving the plot, the method adjusts the text to an appropriate size. If the plot has legend, set legend to True so it also adjusts the legends font size before saving. 
+    The chosen figure name should contain the suffix ".png". Returns nothing.
     i: plotly Figure fig, Path img_name, bool legend
     o: None
     '''
