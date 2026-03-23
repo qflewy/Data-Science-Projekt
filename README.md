@@ -7,7 +7,7 @@ Fuel prices in Germany affect a large share of the population, as many people re
 According to DESTATIS, the average person travels about 15.5 km per day by car. Recent geopolitical events have shown how quickly fuel prices can change. 
 We analyze fuel prices across Germany and investigate the key factors driving their variation.
 
-#### Research Questions
+### Research Questions
 - Intraday patterns in fuel prices
 - Speed of fuel price adjustments to oil price changes
 - Influence of special location factors on price differences and their stability
@@ -18,7 +18,7 @@ We analyze fuel prices across Germany and investigate the key factors driving th
 - Impact of extreme weather events on fuel prices
 
 
-#### Data
+### Data
 ##### Tankerkönig - historical fuel prices (Germany)
 Provides daily CSV files with fuel prices (E5, E10, Diesel) and gas station data across Germany. 
 Data is structured by date: prices/YYYY/MM/YYYY-MM-DD-prices.csv and stations/YYYY/MM/YYYY-MM-DD-stations.csv.
