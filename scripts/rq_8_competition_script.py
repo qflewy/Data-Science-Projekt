@@ -129,6 +129,7 @@ def join_labels_and_group(daily_prices, cluster_csv, cluster_name):
     return df_joined
 
 
+# Debugged with the help of ChatGPT.
 def plot_cluster_prices(
         parquet_files,
         cluster_csv,
