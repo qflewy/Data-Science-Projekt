@@ -1,0 +1,13 @@
+raus:
+-marken vs. frei
+-wetter
+-grenzregionen
+
+rein:
+-oil price
+-fuel up?
+
+vielleicht:
+-station proximity
+-autobahn
+-e10/diesel anomalien
