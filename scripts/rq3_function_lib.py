@@ -442,7 +442,7 @@ def get_autobahn_stations(
         ["uuid", "longitude", "latitude", "brand", "post_code"]
     ]
     export_df.to_csv(
-        autobahn_output_path / r"autobahn_stations.csv", index=False
+        autobahn_output_path / r"autobahn_stations_post_TR.csv", index=False
     )
 
     num_stations = stations_df["is_autobahn"].sum()
@@ -1275,6 +1275,13 @@ def __classify_brand(brand: str):
 def __build_match_map(stations: pl.DataFrame, k: int, max_dist: int):
     pdf = stations.select(
         ["uuid", "autobahn", "longitude", "latitude"]
+    ).filter(
+        pl.col("longitude").is_not_null()
+        & pl.col("latitude").is_not_null()
+        & pl.col("longitude").is_finite()
+        & pl.col("latitude").is_finite()
+        & pl.col("longitude").is_between(-180, 180)
+        & pl.col("latitude").is_between(-90, 90)
     ).to_pandas()
 
     gdf = gpd.GeoDataFrame(
@@ -1347,7 +1354,7 @@ def __build_match_map(stations: pl.DataFrame, k: int, max_dist: int):
     valid_sets = (
         match_map.group_by("match_set_uuid")
         .agg([pl.len().alias("n"), pl.col("autobahn").sum().alias("n_test")])
-        .filter(((pl.col("n") >= 2) & pl.col("n_test") == 1))
+        .filter(((pl.col("n") >= 2) & (pl.col("n_test") == 1)))
         .select("match_set_uuid")
     )
 
@@ -1421,7 +1428,7 @@ if __name__ == "__main__":
 
     stations_path = Path(
         r"/Users/sebastian/data-science-projekt/tankerkoenig_data/"
-        r"stations/stations.csv"
+        r"stations/stations_post_TR.csv"
     )
     border_output_path = Path(
         r"/Users/sebastian/data-science-projekt/tankerkoenig_data/stations"
@@ -1431,7 +1438,7 @@ if __name__ == "__main__":
         r"rq3_panel_summary.csv"
     )
     # get_borderregion_stations(stations_path, border_output_path)
-    # get_autobahn_stations(stations_path, border_output_path)
+    get_autobahn_stations(stations_path, border_output_path)
     # filter_autobahn_from_borders(
     #     border_output_path / "lower_border_stations.csv",
     #     border_output_path / "autobahn_stations.csv",

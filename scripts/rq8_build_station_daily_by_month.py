@@ -152,8 +152,7 @@ def build_station_daily_by_month(
 
 if __name__ == "__main__":
     # allow running as a script with default paths
-    build_station_daily_by_month(
-        r"C:\Users\Bjarne\Desktop\Uni\Data Science Projekt\TankKoenigData",
-        r"C:\Users\Bjarne\Desktop\Uni\Data Science Projekt\PersonalTesting"
-        r"\dbscan\derived",
-    )
+    root = Path(r'/Users/sebastian/data-science-projekt/tankerkoenig_data')
+    derived_dir = Path(r'/Users/sebastian/data-science-projekt/tankerkoenig_data/post_TR_mean_median_station_prices')
+    build_station_daily_by_month(root, derived_dir, 2014, 2026)
+    
