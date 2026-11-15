@@ -6,8 +6,9 @@ raus:
 rein:
 -oil price
 -fuel up?
+-autobahn
 
 vielleicht:
+-marken vs. frei
 -station proximity
--autobahn
 -e10/diesel anomalien
