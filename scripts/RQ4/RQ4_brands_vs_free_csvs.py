@@ -130,7 +130,7 @@ def compute_price_stats(prices_dir: Path, station_classification: pl.DataFrame, 
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    parquet_files = sorted(prices_dir.glob("**/*.parquet"))
+    parquet_files = sorted(prices_dir.glob("*/*.parquet"))  # only YYYY/YYYY-MM.parquet, caches in prices_dir itself are skipped
     if not parquet_files:
         raise FileNotFoundError(f"No parquet files found in {prices_dir}")
 
