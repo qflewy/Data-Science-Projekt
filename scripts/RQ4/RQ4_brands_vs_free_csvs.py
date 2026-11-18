@@ -18,6 +18,11 @@ brand_aliasses: dict[str, str] = {
     "HOYER TANK-TREFF LINDAU":         "HOYER",
     "WESTFALEN TANKSTELLE":            "WESTFALEN",
     "WESTFALEN-TANKSTELLE":            "WESTFALEN",
+    # names used in the station files since 2026 (not present in the old stations.parquet)
+    "TOTALENERGIES":                   "TOTAL",
+    "TOTALENERGIES AUTOHOF":           "TOTAL",
+    "TOTALENERGIES TRUCKSTOP":         "TOTAL",
+    "AGIP ENI":                        "AGIP",
 }
 
 def load_and_classify_stations(parquet_path: Path, brands, autobahn_csv: Path) -> pl.DataFrame:
@@ -27,7 +32,13 @@ def load_and_classify_stations(parquet_path: Path, brands, autobahn_csv: Path) -
     Highway (Autobahn) stations are excluded entirely.
     """
     df = pl.read_parquet(parquet_path)
+    return _classify(df, brands, autobahn_csv)
 
+
+def _classify(df: pl.DataFrame, brands, autobahn_csv: Path) -> pl.DataFrame:
+    """
+    Normalizes the brand names and classifies every station as brand or free station.
+    """
     # Exclude highway stations
     autobahn_uuids = pl.read_csv(autobahn_csv, columns=["uuid"])["uuid"]
     df = df.filter(~pl.col("uuid").is_in(autobahn_uuids))
@@ -161,6 +172,102 @@ def compute_price_stats(prices_dir: Path, station_classification: pl.DataFrame, 
     df_brands.write_csv(brand_file)
     print(f"Saved per-brand stats: {brand_file}")
     print(df_brands.head(10))
+
+
+def load_and_classify_stations_2026(old_parquet: Path, new_csv: Path, brands, autobahn_csv: Path) -> pl.DataFrame:
+    """
+    Same classification as load_and_classify_stations, for the 2026 update:
+    stations from the old stations.parquet keep their brand (as in the original analysis, so later
+    rebrandings like OMV -> ESSO do not change the comparison), stations that are only in the
+    new stations.csv (opened after March 2026) are added from there.
+    """
+    old = pl.read_parquet(old_parquet).select(["uuid", "brand"])
+    new = (
+        pl.read_csv(new_csv, infer_schema=False)  # post_code contains text, so no type inference
+        .select(["uuid", "brand"])
+        .join(old, on="uuid", how="anti")
+    )
+    return _classify(pl.concat([old, new]), brands, autobahn_csv)
+
+
+def compute_2026_stats(prices_dir: Path, station_classification: pl.DataFrame, output_dir: Path, last_date: str = "2026-10-31") -> None:
+    """
+    2026 statistics with the same per-update means as compute_price_stats, split at the
+    12 PM rule (2026-04-01) instead of by year. Additionally per month (per station type and per brand)
+    and per hour of day. For period values, use the mean of the monthly means: pooling all updates of a
+    period overweights months in which a group reports more often (e.g. March 2026, when prices jumped).
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    partials = {"period": [], "brand": [], "month": [], "brand_month": [], "hour": []}
+
+    for pf in sorted((prices_dir / "2026").glob("*.parquet")):
+        df = (
+            pl.read_parquet(pf, columns=["station_uuid", "date", "diesel", "e5", "e10"])
+            .filter(pl.col("date").str.slice(0, 10) <= last_date)
+            .join(station_classification, left_on="station_uuid", right_on="uuid", how="inner")
+            .with_columns([
+                pl.when(pl.col("date").str.slice(0, 10) < "2026-04-01")
+                  .then(pl.lit("2026 Jan-Mar")).otherwise(pl.lit("2026 Apr-Oct")).alias("period"),
+                pl.col("date").str.slice(5, 2).cast(pl.Int8).alias("month"),
+                pl.col("date").str.slice(11, 2).cast(pl.Int8).alias("hour"),
+            ])
+        )
+        if df.height == 0:
+            continue
+        partials["period"].append(_agg_month(df, ["station_type", "period"]))
+        partials["brand"].append(_agg_month(df.filter(pl.col("station_type") == "brand_station"), ["brand_normalized", "period"]))
+        partials["month"].append(_agg_month(df, ["station_type", "month"]))
+        partials["brand_month"].append(_agg_month(df.filter(pl.col("station_type") == "brand_station"), ["brand_normalized", "month"]))
+        partials["hour"].append(_agg_month(df, ["station_type", "period", "hour"]))
+        print(f"{pf.name}: {df.height:,} rows")
+        del df
+
+    outputs = {
+        "period": (["station_type", "period"], "brand_vs_free_2026_period_stats.csv"),
+        "brand": (["brand_normalized", "period"], "per_brand_2026_period_stats.csv"),
+        "month": (["station_type", "month"], "brand_vs_free_2026_monthly_stats.csv"),
+        "brand_month": (["brand_normalized", "month"], "per_brand_2026_monthly_stats.csv"),
+        "hour": (["station_type", "period", "hour"], "brand_vs_free_2026_hourly_stats.csv"),
+    }
+    for key, (group_cols, file_name) in outputs.items():
+        _combine_and_finalize(partials[key], group_cols).write_csv(output_dir / file_name)
+        print(f"Saved: {file_name}")
+
+
+def compute_2026_snapshot_gap(prices_dir: Path, station_classification: pl.DataFrame, output_dir: Path,
+                              months: list[int] = list(range(1, 11))) -> pl.DataFrame:
+    """
+    Brand minus free price difference as snapshot comparison: every 15 minutes the price that is valid
+    at each station is taken (carried forward until the next change, see price_grid.py), averaged per
+    station type and compared at the same moment. Every station counts once per slot, independent of
+    how often it reports, and both groups always face the same market (noon jump, war, fuel tax cut).
+    Saves the daily mean difference in ct/L.
+    """
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "RQ5"))
+    import price_grid
+
+    fuels = ["diesel", "e5", "e10"]
+    groups = station_classification.select([pl.col("uuid").alias("station_uuid"), pl.col("station_type").alias("group")])
+    slots = price_grid.build_slot_means(str(prices_dir), 2026, months, fuels=fuels, groups=groups, price_range=(0.5, 4.0))
+
+    wide = (
+        slots
+        .select(["slot", "group", *[f"{f}_mean" for f in fuels]])
+        .pivot(on="group", index="slot", values=[f"{f}_mean" for f in fuels])
+    )
+    daily = (
+        wide
+        .with_columns([
+            ((pl.col(f"{f}_mean_brand_station") - pl.col(f"{f}_mean_free_station")) * 100).alias(f"{f}_gap_ct")
+            for f in fuels
+        ])
+        .group_by(pl.col("slot").dt.date().alias("day"))
+        .agg([pl.col(f"{f}_gap_ct").mean() for f in fuels])
+        .sort("day")
+    )
+    daily.write_csv(output_dir / "brand_vs_free_2026_daily_snapshot_gap.csv")
+    return daily
 
 
 if __name__ == "__main__":
